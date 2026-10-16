@@ -2,11 +2,14 @@ package com.authmatrix.server.controller;
 
 import com.authmatrix.server.db.DatabaseManager;
 import com.authmatrix.server.proxy.ReverseProxyServer;
+import com.authmatrix.server.service.WebhookDispatcher;
 import com.authmatrix.server.verifier.MatrixVerifier;
 import com.authmatrix.shared.model.*;
-import com.authmatrix.shared.util.JsonUtils;
+import com.authmatrix.shared.util.*;
 import com.fasterxml.jackson.core.type.TypeReference;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -29,12 +32,17 @@ public class ApiController {
     private final DatabaseManager databaseManager;
     private final ReverseProxyServer proxyServer;
     private final MatrixVerifier matrixVerifier;
+    private final WebhookDispatcher webhookDispatcher;
     private final HttpClient httpClient;
 
-    public ApiController(DatabaseManager databaseManager, ReverseProxyServer proxyServer, MatrixVerifier matrixVerifier) {
+    public ApiController(DatabaseManager databaseManager,
+                         ReverseProxyServer proxyServer,
+                         MatrixVerifier matrixVerifier,
+                         WebhookDispatcher webhookDispatcher) {
         this.databaseManager = databaseManager;
         this.proxyServer = proxyServer;
         this.matrixVerifier = matrixVerifier;
+        this.webhookDispatcher = webhookDispatcher;
         this.httpClient = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(Duration.ofSeconds(15))
@@ -126,7 +134,7 @@ public class ApiController {
     }
 
     // ============================================================
-    // POLICIES & ENDPOINTS (ALIASES FOR FULL COMPATIBILITY)
+    // POLICIES & ENDPOINTS
     // ============================================================
 
     @GetMapping({"/policies", "/endpoints"})
@@ -159,6 +167,53 @@ public class ApiController {
     }
 
     // ============================================================
+    // OPENAPI / SWAGGER SPEC IMPORTER
+    // ============================================================
+
+    @PostMapping("/spec/import")
+    public ResponseEntity<?> importOpenApiSpec(@RequestBody Map<String, String> body) {
+        String specContent = body.get("spec");
+        if (specContent == null || specContent.isBlank()) {
+            specContent = body.get("content");
+        }
+        if (specContent == null || specContent.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Spec content is required ('spec' or 'content' field)"));
+        }
+
+        try {
+            List<Role> existingRoles = databaseManager.listRoles();
+            List<String> roleNames = existingRoles.stream().map(Role::getName).toList();
+
+            OpenApiImporter.ImportResult result = OpenApiImporter.parseSpec(specContent, roleNames);
+
+            if (result.detectedTargetBaseUrl() != null && !result.detectedTargetBaseUrl().isBlank()) {
+                try {
+                    URI uri = URI.create(result.detectedTargetBaseUrl());
+                    if (uri.getScheme() != null && (uri.getScheme().equalsIgnoreCase("http") || uri.getScheme().equalsIgnoreCase("https"))) {
+                        proxyServer.setTargetHost(result.detectedTargetBaseUrl());
+                    }
+                } catch (Exception ignored) {}
+            }
+
+            int count = 0;
+            for (CreateEndpointPolicyInput epInput : result.endpoints()) {
+                databaseManager.createEndpoint(epInput);
+                count++;
+            }
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "importedCount", count,
+                    "specVersion", result.specVersion(),
+                    "title", result.title(),
+                    "targetBaseUrl", proxyServer.getTargetHost()
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Failed to import OpenAPI spec: " + e.getMessage()));
+        }
+    }
+
+    // ============================================================
     // REPEATER SERVICE
     // ============================================================
 
@@ -184,7 +239,6 @@ public class ApiController {
                     .uri(uri)
                     .timeout(Duration.ofSeconds(15));
 
-            // Custom headers
             Object headersObj = body.get("headers");
             if (headersObj instanceof Map<?, ?> headersMap) {
                 for (Map.Entry<?, ?> entry : headersMap.entrySet()) {
@@ -197,7 +251,6 @@ public class ApiController {
                 }
             }
 
-            // Body
             String bodyContent = (String) body.get("body");
             String upperMethod = method.toUpperCase();
             if (List.of("GET", "HEAD", "OPTIONS").contains(upperMethod) || bodyContent == null || bodyContent.isEmpty()) {
@@ -318,6 +371,78 @@ public class ApiController {
     }
 
     // ============================================================
+    // EXECUTIVE REPORTS (SARIF, HTML, MARKDOWN)
+    // ============================================================
+
+    @GetMapping(value = "/reports/sarif", produces = "application/json")
+    public ResponseEntity<String> getSarifReport() {
+        DatabaseManager.MatrixRunResult runResult = databaseManager.getLatestMatrixResults();
+        String sarifJson = SarifReportGenerator.generateSarif(
+                runResult.runId(),
+                runResult.results(),
+                proxyServer.getTargetHost()
+        );
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"authmatrix-findings.sarif\"")
+                .body(sarifJson);
+    }
+
+    @GetMapping(value = "/reports/html", produces = MediaType.TEXT_HTML_VALUE)
+    public ResponseEntity<String> getHtmlReport() {
+        DatabaseManager.MatrixRunResult runResult = databaseManager.getLatestMatrixResults();
+        String html = HtmlReportGenerator.generateHtml(
+                runResult.runId(),
+                runResult.results(),
+                proxyServer.getTargetHost()
+        );
+        return ResponseEntity.ok(html);
+    }
+
+    @GetMapping(value = "/reports/markdown", produces = "text/markdown")
+    public ResponseEntity<String> getMarkdownReport() {
+        DatabaseManager.MatrixRunResult runResult = databaseManager.getLatestMatrixResults();
+        String md = MarkdownReportGenerator.generateMarkdown(
+                runResult.runId(),
+                runResult.results(),
+                proxyServer.getTargetHost()
+        );
+        return ResponseEntity.ok(md);
+    }
+
+    // ============================================================
+    // WEBHOOK ALERTS
+    // ============================================================
+
+    @GetMapping("/webhook/config")
+    public WebhookConfig getWebhookConfig() {
+        return databaseManager.getWebhookConfig();
+    }
+
+    @PostMapping("/webhook/config")
+    public ResponseEntity<?> saveWebhookConfig(@RequestBody WebhookConfig config) {
+        databaseManager.saveWebhookConfig(config);
+        return ResponseEntity.ok(config);
+    }
+
+    @PostMapping("/webhook/test")
+    public ResponseEntity<?> testWebhook() {
+        WebhookConfig config = databaseManager.getWebhookConfig();
+        if (config.getWebhookUrl() == null || config.getWebhookUrl().isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "No webhook URL configured"));
+        }
+
+        DatabaseManager.MatrixRunResult runResult = databaseManager.getLatestMatrixResults();
+        boolean sent = webhookDispatcher.dispatchAlert(
+                config,
+                runResult.runId() != null ? runResult.runId() : "test-run-001",
+                proxyServer.getTargetHost(),
+                runResult.results()
+        );
+
+        return ResponseEntity.ok(Map.of("success", sent, "url", config.getWebhookUrl()));
+    }
+
+    // ============================================================
     // CONFIG / YAML EXPORT & IMPORT
     // ============================================================
 
@@ -326,7 +451,12 @@ public class ApiController {
         List<Role> roles = databaseManager.listRoles();
         Map<String, AuthMatrixYaml.YamlRole> roleMap = new LinkedHashMap<>();
         for (Role r : roles) {
-            roleMap.put(r.getName(), new AuthMatrixYaml.YamlRole(r.getHeaderName(), r.getHeaderValue()));
+            roleMap.put(r.getName(), new AuthMatrixYaml.YamlRole(
+                    r.getHeaderName(),
+                    r.getHeaderValue(),
+                    r.getAuthHandler(),
+                    r.getParams()
+            ));
         }
 
         List<EndpointPolicy> endpoints = databaseManager.listEndpoints();
@@ -338,7 +468,8 @@ public class ApiController {
                     ep.getPath(),
                     ep.getHeaders(),
                     ep.getBody(),
-                    ep.getExpect()
+                    ep.getExpect(),
+                    ep.getAssertions()
             ));
         }
 
@@ -386,7 +517,9 @@ public class ApiController {
                     databaseManager.upsertRole(new CreateRoleInput(
                             roleName,
                             r.getHeaderName() != null ? r.getHeaderName() : "Authorization",
-                            r.getHeaderValue() != null ? r.getHeaderValue() : ""
+                            r.getHeaderValue() != null ? r.getHeaderValue() : "",
+                            r.getAuthHandler(),
+                            r.getParams()
                     ));
                     importedRoles++;
                 }
@@ -409,7 +542,8 @@ public class ApiController {
                             ep.getPath(),
                             ep.getHeaders(),
                             bodyStr,
-                            ep.getExpect()
+                            ep.getExpect(),
+                            ep.getAssertions()
                     ));
                     importedEndpoints++;
                 }

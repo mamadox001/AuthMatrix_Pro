@@ -3,6 +3,9 @@ package com.authmatrix.shared.model;
 public enum Verdict {
     PASS,
     REGRESSION_UNAUTHORIZED_ACCESS,
+    REGRESSION_DATA_LEAKAGE,
+    BOLA_IDOR_VULNERABILITY,
+    ASSERTION_FAILED,
     STATUS_MISMATCH,
     NETWORK_ERROR
 }

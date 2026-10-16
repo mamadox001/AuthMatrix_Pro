@@ -1164,6 +1164,25 @@ textarea.input {
     animation: failFlash 0.5s ease;
 }
 
+.cell-bola {
+    background: rgba(220, 38, 38, 0.25);
+    color: #ff4d4d;
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.2);
+}
+
+.cell-leak {
+    background: rgba(245, 158, 11, 0.2);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.cell-assert {
+    background: rgba(217, 119, 6, 0.18);
+    color: #f59e0b;
+    border: 1px solid rgba(217, 119, 6, 0.35);
+}
+
 .cell-mismatch {
     background: var(--warning-bg);
     color: var(--warning);
@@ -1874,4 +1893,82 @@ textarea.input {
     border: none;
     background: #ffffff;
     border-radius: var(--radius-sm);
+}
+
+/* Remediation Advisor Drawer Styles */
+.remed-section {
+    margin-top: 14px;
+    border-top: 1px solid var(--border);
+    padding-top: 12px;
+}
+
+.remed-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--accent);
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.remed-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+}
+
+.remed-tab {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-tertiary);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.remed-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+
+.remed-code {
+    background: #080c14;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 10px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: #e2e8f0;
+    white-space: pre-wrap;
+    max-height: 180px;
+    overflow-y: auto;
+}
+
+.collapsible-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    background: var(--bg-secondary);
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    font-weight: 600;
+    margin: 10px 0 6px 0;
+    border: 1px solid var(--border);
+}
+
+.collapsible-header:hover {
+    border-color: var(--accent);
+}
+
+.collapsible-body {
+    padding: 6px 4px;
 }

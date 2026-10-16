@@ -17,12 +17,26 @@ public class CreateRoleInput {
     @com.fasterxml.jackson.annotation.JsonAlias({"headerValue", "header_value"})
     private String headerValue = "";
 
+    @JsonProperty("auth_handler")
+    @com.fasterxml.jackson.annotation.JsonAlias({"authHandler", "auth_handler"})
+    private AuthHandler authHandler;
+
+    @JsonProperty("params")
+    private java.util.Map<String, String> params = new java.util.HashMap<>();
+
     public CreateRoleInput() {}
 
     public CreateRoleInput(String name, String headerName, String headerValue) {
+        this(name, headerName, headerValue, null, null);
+    }
+
+    public CreateRoleInput(String name, String headerName, String headerValue,
+                           AuthHandler authHandler, java.util.Map<String, String> params) {
         this.name = name;
         this.headerName = headerName != null ? headerName : "Authorization";
         this.headerValue = headerValue != null ? headerValue : "";
+        this.authHandler = authHandler;
+        this.params = params != null ? params : new java.util.HashMap<>();
     }
 
     public String getName() { return name; }
@@ -33,4 +47,10 @@ public class CreateRoleInput {
 
     public String getHeaderValue() { return headerValue; }
     public void setHeaderValue(String headerValue) { this.headerValue = headerValue; }
+
+    public AuthHandler getAuthHandler() { return authHandler; }
+    public void setAuthHandler(AuthHandler authHandler) { this.authHandler = authHandler; }
+
+    public java.util.Map<String, String> getParams() { return params; }
+    public void setParams(java.util.Map<String, String> params) { this.params = params != null ? params : new java.util.HashMap<>(); }
 }

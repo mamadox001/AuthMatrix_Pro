@@ -27,6 +27,9 @@ public class EndpointPolicy {
 
     private Map<String, Integer> expect = new HashMap<>();
 
+    @JsonProperty("assertions")
+    private PolicyAssertion assertions;
+
     @JsonProperty("created_at")
     private String createdAt;
 
@@ -35,6 +38,12 @@ public class EndpointPolicy {
     public EndpointPolicy(String id, String name, HttpMethod method, String path,
                           Map<String, String> headers, String body,
                           Map<String, Integer> expect, String createdAt) {
+        this(id, name, method, path, headers, body, expect, null, createdAt);
+    }
+
+    public EndpointPolicy(String id, String name, HttpMethod method, String path,
+                          Map<String, String> headers, String body,
+                          Map<String, Integer> expect, PolicyAssertion assertions, String createdAt) {
         this.id = id;
         this.name = name;
         this.method = method != null ? method : HttpMethod.GET;
@@ -42,6 +51,7 @@ public class EndpointPolicy {
         this.headers = headers != null ? headers : new HashMap<>();
         this.body = body;
         this.expect = expect != null ? expect : new HashMap<>();
+        this.assertions = assertions;
         this.createdAt = createdAt;
     }
 
@@ -65,6 +75,9 @@ public class EndpointPolicy {
 
     public Map<String, Integer> getExpect() { return expect; }
     public void setExpect(Map<String, Integer> expect) { this.expect = expect != null ? expect : new HashMap<>(); }
+
+    public PolicyAssertion getAssertions() { return assertions; }
+    public void setAssertions(PolicyAssertion assertions) { this.assertions = assertions; }
 
     public String getCreatedAt() { return createdAt; }
     public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }

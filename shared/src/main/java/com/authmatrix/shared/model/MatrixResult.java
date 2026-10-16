@@ -42,6 +42,15 @@ public class MatrixResult {
     @JsonProperty("error_message")
     private String errorMessage;
 
+    @JsonProperty("assertion_failure")
+    private String assertionFailure;
+
+    @JsonProperty("bola_detected")
+    private boolean bolaDetected;
+
+    @JsonProperty("remediation")
+    private java.util.Map<String, String> remediation = new java.util.HashMap<>();
+
     @JsonProperty("evaluated_at")
     private String evaluatedAt;
 
@@ -51,6 +60,17 @@ public class MatrixResult {
                         HttpMethod endpointMethod, String endpointPath, String roleName,
                         int expectedStatus, int actualStatus, long responseBytes,
                         long durationMs, Verdict verdict, String errorMessage, String evaluatedAt) {
+        this(id, runId, endpointId, endpointName, endpointMethod, endpointPath, roleName,
+                expectedStatus, actualStatus, responseBytes, durationMs, verdict, errorMessage,
+                null, false, null, evaluatedAt);
+    }
+
+    public MatrixResult(String id, String runId, String endpointId, String endpointName,
+                        HttpMethod endpointMethod, String endpointPath, String roleName,
+                        int expectedStatus, int actualStatus, long responseBytes,
+                        long durationMs, Verdict verdict, String errorMessage,
+                        String assertionFailure, boolean bolaDetected,
+                        java.util.Map<String, String> remediation, String evaluatedAt) {
         this.id = id;
         this.runId = runId;
         this.endpointId = endpointId;
@@ -64,6 +84,9 @@ public class MatrixResult {
         this.durationMs = durationMs;
         this.verdict = verdict;
         this.errorMessage = errorMessage;
+        this.assertionFailure = assertionFailure;
+        this.bolaDetected = bolaDetected;
+        this.remediation = remediation != null ? remediation : new java.util.HashMap<>();
         this.evaluatedAt = evaluatedAt;
     }
 
@@ -120,4 +143,13 @@ public class MatrixResult {
 
     @JsonProperty("name")
     public String getName() { return endpointName; }
+
+    public String getAssertionFailure() { return assertionFailure; }
+    public void setAssertionFailure(String assertionFailure) { this.assertionFailure = assertionFailure; }
+
+    public boolean isBolaDetected() { return bolaDetected; }
+    public void setBolaDetected(boolean bolaDetected) { this.bolaDetected = bolaDetected; }
+
+    public java.util.Map<String, String> getRemediation() { return remediation; }
+    public void setRemediation(java.util.Map<String, String> remediation) { this.remediation = remediation != null ? remediation : new java.util.HashMap<>(); }
 }

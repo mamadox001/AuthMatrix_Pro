@@ -53,11 +53,23 @@ public class AuthMatrixYaml {
         @JsonProperty("header_value")
         private String headerValue = "";
 
+        @JsonProperty("auth_handler")
+        private AuthHandler authHandler;
+
+        @JsonProperty("params")
+        private Map<String, String> params = new HashMap<>();
+
         public YamlRole() {}
 
         public YamlRole(String headerName, String headerValue) {
+            this(headerName, headerValue, null, null);
+        }
+
+        public YamlRole(String headerName, String headerValue, AuthHandler authHandler, Map<String, String> params) {
             this.headerName = headerName != null ? headerName : "Authorization";
             this.headerValue = headerValue != null ? headerValue : "";
+            this.authHandler = authHandler;
+            this.params = params != null ? params : new HashMap<>();
         }
 
         public String getHeaderName() { return headerName; }
@@ -65,6 +77,12 @@ public class AuthMatrixYaml {
 
         public String getHeaderValue() { return headerValue; }
         public void setHeaderValue(String headerValue) { this.headerValue = headerValue; }
+
+        public AuthHandler getAuthHandler() { return authHandler; }
+        public void setAuthHandler(AuthHandler authHandler) { this.authHandler = authHandler; }
+
+        public Map<String, String> getParams() { return params; }
+        public void setParams(Map<String, String> params) { this.params = params != null ? params : new HashMap<>(); }
     }
 
     public static class YamlEndpoint {
@@ -84,16 +102,26 @@ public class AuthMatrixYaml {
         @NotNull
         private Map<String, Integer> expect = new HashMap<>();
 
+        @JsonProperty("assertions")
+        private PolicyAssertion assertions;
+
         public YamlEndpoint() {}
 
         public YamlEndpoint(String name, HttpMethod method, String path,
                             Map<String, String> headers, Object body, Map<String, Integer> expect) {
+            this(name, method, path, headers, body, expect, null);
+        }
+
+        public YamlEndpoint(String name, HttpMethod method, String path,
+                            Map<String, String> headers, Object body, Map<String, Integer> expect,
+                            PolicyAssertion assertions) {
             this.name = name;
             this.method = method != null ? method : HttpMethod.GET;
             this.path = path != null ? path : "/";
             this.headers = headers != null ? headers : new HashMap<>();
             this.body = body;
             this.expect = expect != null ? expect : new HashMap<>();
+            this.assertions = assertions;
         }
 
         public String getName() { return name; }
@@ -113,5 +141,8 @@ public class AuthMatrixYaml {
 
         public Map<String, Integer> getExpect() { return expect; }
         public void setExpect(Map<String, Integer> expect) { this.expect = expect != null ? expect : new HashMap<>(); }
+
+        public PolicyAssertion getAssertions() { return assertions; }
+        public void setAssertions(PolicyAssertion assertions) { this.assertions = assertions; }
     }
 }

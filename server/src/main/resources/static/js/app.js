@@ -877,20 +877,25 @@ const App = (() => {
             epMap[key][role] = { ...r, resultIndex: idx };
         });
 
-        let passCount = 0, failCount = 0, mismatchCount = 0, errorCount = 0;
+        let passCount = 0, failCount = 0, bolaCount = 0, leakCount = 0, assertCount = 0, mismatchCount = 0, errorCount = 0;
         results.forEach(r => {
             const v = (r.verdict || '').toUpperCase();
             if (v === 'PASS') passCount++;
+            else if (v === 'BOLA_IDOR_VULNERABILITY') { failCount++; bolaCount++; }
             else if (v === 'REGRESSION_UNAUTHORIZED_ACCESS') failCount++;
+            else if (v === 'REGRESSION_DATA_LEAKAGE') { failCount++; leakCount++; }
+            else if (v === 'ASSERTION_FAILED') assertCount++;
             else if (v === 'STATUS_MISMATCH') mismatchCount++;
             else errorCount++;
         });
 
         summaryEl.innerHTML = `
             <span class="badge badge-success">✓ ${passCount} Passed</span>
-            <span class="badge badge-danger">✗ ${failCount} Critical Regressions</span>
+            ${bolaCount > 0 ? `<span class="badge badge-danger">🚨 ${bolaCount} BOLA</span>` : ''}
+            <span class="badge badge-danger">✗ ${failCount} Regressions</span>
+            ${leakCount > 0 ? `<span class="badge badge-warning">⚠️ ${leakCount} Data Leaks</span>` : ''}
+            ${assertCount > 0 ? `<span class="badge badge-warning">⚠ ${assertCount} Assertions</span>` : ''}
             <span class="badge badge-warning">⚠ ${mismatchCount} Mismatches</span>
-            <span class="badge">${errorCount} Errors</span>
             <span class="badge">Total Tests: ${results.length}</span>
         `;
 
@@ -921,8 +926,14 @@ const App = (() => {
 
                 if (v === 'PASS') {
                     cellClass = 'cell-pass'; icon = '✓'; label = `${actual} OK`;
+                } else if (v === 'BOLA_IDOR_VULNERABILITY') {
+                    cellClass = 'cell-bola'; icon = '🚨'; label = `${actual} BOLA/IDOR`;
                 } else if (v === 'REGRESSION_UNAUTHORIZED_ACCESS') {
-                    cellClass = 'cell-fail'; icon = '🚨'; label = `${actual} (Exp ${expected}) BOLA`;
+                    cellClass = 'cell-fail'; icon = '🚨'; label = `${actual} (Exp ${expected})`;
+                } else if (v === 'REGRESSION_DATA_LEAKAGE') {
+                    cellClass = 'cell-leak'; icon = '⚠️'; label = `${actual} DATA LEAK`;
+                } else if (v === 'ASSERTION_FAILED') {
+                    cellClass = 'cell-assert'; icon = '⚠️'; label = `${actual} ASSERTION`;
                 } else if (v === 'STATUS_MISMATCH') {
                     cellClass = 'cell-mismatch'; icon = '⚠'; label = `${actual} (Exp ${expected})`;
                 } else {
@@ -945,6 +956,8 @@ const App = (() => {
     function refreshMatrix() {
         if (matrixResults) renderMatrixGrid(matrixResults);
     }
+
+    let activeRemedLang = 'spring_boot';
 
     function inspectMatrixCell(index) {
         if (!matrixResults) return;
@@ -979,11 +992,26 @@ const App = (() => {
         const desc = document.getElementById('drawer-alert-desc');
         const icon = document.getElementById('drawer-verdict-icon');
 
-        if (verdict === 'REGRESSION_UNAUTHORIZED_ACCESS') {
+        if (verdict === 'BOLA_IDOR_VULNERABILITY') {
             banner.className = 'finding-alert finding-alert-critical';
-            heading.textContent = '🚨 CRITICAL VULNERABILITY: Broken Object Level Authorization (BOLA)';
-            desc.textContent = `Endpoint returned HTTP ${actual} for identity '${role}', but security policy strictly requires HTTP ${expected}. Unauthorized users have access to restricted resources!`;
+            heading.textContent = '🚨 CRITICAL: Broken Object Level Authorization (BOLA/IDOR)';
+            desc.textContent = finding.assertion_failure || `Identity '${role}' was able to access cross-tenant objects belonging to other accounts at ${path}!`;
             icon.textContent = '🚨';
+        } else if (verdict === 'REGRESSION_UNAUTHORIZED_ACCESS') {
+            banner.className = 'finding-alert finding-alert-critical';
+            heading.textContent = '🚨 HIGH: Broken Function Level Authorization (BFLA)';
+            desc.textContent = `Endpoint returned HTTP ${actual} for identity '${role}', but security policy strictly requires HTTP ${expected}. Access control was bypassed!`;
+            icon.textContent = '🚨';
+        } else if (verdict === 'REGRESSION_DATA_LEAKAGE') {
+            banner.className = 'finding-alert finding-alert-warning';
+            heading.textContent = '⚠️ HIGH: Sensitive Data Leakage Violation';
+            desc.textContent = finding.assertion_failure || `Response payload contains prohibited sensitive data violating negative isolation policies.`;
+            icon.textContent = '⚠️';
+        } else if (verdict === 'ASSERTION_FAILED') {
+            banner.className = 'finding-alert finding-alert-warning';
+            heading.textContent = '⚠ Contract Assertion Violation';
+            desc.textContent = finding.assertion_failure || `Expected status was received, but custom response content/regex assertions failed.`;
+            icon.textContent = '⚠';
         } else if (verdict === 'PASS') {
             banner.className = 'finding-alert finding-alert-pass';
             heading.textContent = '✓ Contract Satisfied';
@@ -996,7 +1024,42 @@ const App = (() => {
             icon.textContent = '⚠';
         }
 
+        // Render Remediation Advisor
+        const remedSec = document.getElementById('drawer-remed-section');
+        const remed = finding.remediation;
+        if (remed && typeof remed === 'object' && Object.keys(remed).length > 0) {
+            remedSec.style.display = 'block';
+            updateRemediationCode(remed);
+        } else {
+            remedSec.style.display = 'none';
+        }
+
         drawer.classList.add('open');
+    }
+
+    function switchRemedTab(lang) {
+        activeRemedLang = lang;
+        document.querySelectorAll('.remed-tab').forEach(t => t.classList.remove('active'));
+        const tabEl = document.getElementById(`tab-remed-${lang === 'spring_boot' ? 'spring' : lang === 'express_js' ? 'express' : lang === 'fastapi' ? 'fastapi' : 'go'}`);
+        if (tabEl) tabEl.classList.add('active');
+
+        if (activeFinding && activeFinding.remediation) {
+            updateRemediationCode(activeFinding.remediation);
+        }
+    }
+
+    function updateRemediationCode(remed) {
+        const codeEl = document.getElementById('drawer-remed-code');
+        if (!codeEl) return;
+        const code = remed[activeRemedLang] || remed.explanation || remed.recommendation || '// No specific code snippet available for this runtime';
+        codeEl.textContent = code;
+    }
+
+    function toggleCollapsible(id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const isOpen = el.style.display !== 'none';
+        el.style.display = isOpen ? 'none' : 'block';
     }
 
     function closeMatrixDrawer() {
@@ -1239,6 +1302,29 @@ const App = (() => {
         document.getElementById('role-name').value = '';
         document.getElementById('role-header-name').value = 'Authorization';
         document.getElementById('role-header-value').value = '';
+
+        const authEnabled = document.getElementById('role-auth-enabled');
+        if (authEnabled) authEnabled.checked = false;
+        const authUrl = document.getElementById('role-auth-url');
+        if (authUrl) authUrl.value = '';
+        const authMethod = document.getElementById('role-auth-method');
+        if (authMethod) authMethod.value = 'POST';
+        const authTokenPath = document.getElementById('role-auth-token-path');
+        if (authTokenPath) authTokenPath.value = 'token';
+        const authPrefix = document.getElementById('role-auth-prefix');
+        if (authPrefix) authPrefix.value = 'Bearer ';
+        const authTtl = document.getElementById('role-auth-ttl');
+        if (authTtl) authTtl.value = '300';
+        const authBody = document.getElementById('role-auth-body');
+        if (authBody) authBody.value = '';
+        const paramsJson = document.getElementById('role-params-json');
+        if (paramsJson) paramsJson.value = '';
+
+        const authBodyContainer = document.getElementById('role-auth-handler-body');
+        if (authBodyContainer) authBodyContainer.style.display = 'none';
+        const paramsBodyContainer = document.getElementById('role-params-body');
+        if (paramsBodyContainer) paramsBodyContainer.style.display = 'none';
+
         openModal('modal-add-role');
     }
 
@@ -1249,11 +1335,52 @@ const App = (() => {
 
         if (!name) { toast('Role identifier is required.', 'warning'); return; }
 
+        let authHandler = null;
+        const authEnabled = document.getElementById('role-auth-enabled')?.checked;
+        const authUrl = document.getElementById('role-auth-url')?.value.trim();
+        if (authEnabled || authUrl) {
+            if (!authUrl) {
+                toast('Please provide a Login URL for token auto-refresh.', 'warning');
+                return;
+            }
+            let bodyJson = null;
+            const rawBody = document.getElementById('role-auth-body')?.value.trim();
+            if (rawBody) {
+                try {
+                    bodyJson = JSON.parse(rawBody);
+                } catch {
+                    toast('Invalid JSON in Login Request Body.', 'error');
+                    return;
+                }
+            }
+            authHandler = {
+                url: authUrl,
+                method: document.getElementById('role-auth-method')?.value || 'POST',
+                token_path: document.getElementById('role-auth-token-path')?.value.trim() || 'token',
+                token_prefix: document.getElementById('role-auth-prefix')?.value ?? 'Bearer ',
+                cache_ttl_seconds: parseInt(document.getElementById('role-auth-ttl')?.value, 10) || 300,
+                body: bodyJson
+            };
+        }
+
+        let params = null;
+        const rawParams = document.getElementById('role-params-json')?.value.trim();
+        if (rawParams) {
+            try {
+                params = JSON.parse(rawParams);
+            } catch {
+                toast('Invalid JSON in Tenant & User Parameters.', 'error');
+                return;
+            }
+        }
+
         try {
             await api('POST', '/api/roles', {
                 name,
                 header_name: headerName || 'Authorization',
-                header_value: headerValue
+                header_value: headerValue,
+                auth_handler: authHandler,
+                params: params
             });
             closeModal();
             refreshRoles();
@@ -1327,6 +1454,19 @@ const App = (() => {
         document.getElementById('policy-expect').value = '{"admin": 200, "member_a": 200, "guest": 401}';
         document.getElementById('policy-headers').value = '';
         document.getElementById('policy-body').value = '';
+
+        const assertNot = document.getElementById('policy-assert-not-contain');
+        if (assertNot) assertNot.value = '';
+        const assertContain = document.getElementById('policy-assert-contain');
+        if (assertContain) assertContain.value = '';
+        const assertRegex = document.getElementById('policy-assert-regex');
+        if (assertRegex) assertRegex.value = '';
+        const assertRegexNot = document.getElementById('policy-assert-regex-not');
+        if (assertRegexNot) assertRegexNot.value = '';
+
+        const assertionsContainer = document.getElementById('policy-assertions-body');
+        if (assertionsContainer) assertionsContainer.style.display = 'none';
+
         openModal('modal-add-policy');
     }
 
@@ -1350,8 +1490,38 @@ const App = (() => {
             try { headers = JSON.parse(headersStr); } catch { toast('Invalid JSON in Custom Headers.', 'error'); return; }
         }
 
+        const notContain = document.getElementById('policy-assert-not-contain')?.value.trim();
+        const contain = document.getElementById('policy-assert-contain')?.value.trim();
+        const regex = document.getElementById('policy-assert-regex')?.value.trim();
+        const regexNot = document.getElementById('policy-assert-regex-not')?.value.trim();
+
+        let assertions = null;
+        if (notContain || contain || regex || regexNot) {
+            assertions = {};
+            if (notContain) {
+                assertions.must_not_contain = notContain.split(',').map(s => s.trim()).filter(Boolean);
+            }
+            if (contain) {
+                assertions.must_contain = contain.split(',').map(s => s.trim()).filter(Boolean);
+            }
+            if (regex) {
+                assertions.response_body_matches = regex;
+            }
+            if (regexNot) {
+                assertions.response_body_not_matches = regexNot;
+            }
+        }
+
         try {
-            await api('POST', '/api/policies', { name, method, path, expect, headers, body: body || null });
+            await api('POST', '/api/policies', {
+                name,
+                method,
+                path,
+                expect,
+                headers: Object.keys(headers).length > 0 ? headers : null,
+                body: body || null,
+                assertions
+            });
             closeModal();
             refreshPolicies();
             toast(`Policy "${name}" created successfully.`, 'success');
@@ -1410,6 +1580,152 @@ const App = (() => {
             toast('Configuration exported as .authmatrix.yaml', 'success');
         } catch (err) {
             toast('Export failed: ' + err.message, 'error');
+        }
+    }
+
+    /* ============================================================
+       OPENAPI / SWAGGER IMPORT
+       ============================================================ */
+
+    function showOpenApiModal() {
+        const input = document.getElementById('openapi-spec-input');
+        if (input) input.value = '';
+        openModal('modal-openapi');
+    }
+
+    async function importOpenApiSpec() {
+        const spec = document.getElementById('openapi-spec-input')?.value.trim();
+        if (!spec) {
+            toast('Please paste an OpenAPI or Swagger specification (JSON or YAML).', 'warning');
+            return;
+        }
+
+        setStatus('Importing OpenAPI spec and generating contract policies…');
+        try {
+            const res = await api('POST', '/api/spec/import', { spec });
+            closeModal();
+            await refreshPolicies();
+            const count = res.importedCount || res.imported_count || 0;
+            const title = res.title ? ` "${res.title}"` : '';
+            toast(`Successfully imported ${count} policy endpoint(s) from OpenAPI${title}!`, 'success');
+            setStatus(`Imported ${count} endpoint(s) from OpenAPI specification.`);
+        } catch (err) {
+            toast('OpenAPI import failed: ' + err.message, 'error');
+            setStatus('OpenAPI import error: ' + err.message);
+        }
+    }
+
+    /* ============================================================
+       EXECUTIVE REPORTS (HTML, SARIF, MARKDOWN)
+       ============================================================ */
+
+    function openHtmlReport() {
+        window.open('/api/reports/html', '_blank');
+        toast('Opening Executive HTML report in new tab…', 'info');
+    }
+
+    async function exportSarifReport() {
+        try {
+            const data = await api('GET', '/api/reports/sarif');
+            const str = typeof data === 'object' ? JSON.stringify(data, null, 2) : data;
+            const blob = new Blob([str], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'authmatrix-findings.sarif.json';
+            a.click();
+            URL.revokeObjectURL(url);
+            toast('SARIF v2.1.0 security report downloaded.', 'success');
+        } catch (err) {
+            toast('SARIF export failed: ' + err.message, 'error');
+        }
+    }
+
+    async function openMarkdownReport() {
+        try {
+            const res = await fetch(API_BASE + '/api/reports/markdown');
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const md = await res.text();
+            const blob = new Blob([md], { type: 'text/markdown' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'authmatrix-summary.md';
+            a.click();
+            URL.revokeObjectURL(url);
+            toast('Markdown PR summary downloaded.', 'success');
+        } catch (err) {
+            toast('Markdown export failed: ' + err.message, 'error');
+        }
+    }
+
+    /* ============================================================
+       WEBHOOK ALERTS (CI/CD)
+       ============================================================ */
+
+    async function showWebhookModal() {
+        try {
+            const cfg = await api('GET', '/api/webhook/config');
+            if (cfg) {
+                document.getElementById('webhook-enabled').checked = !!cfg.enabled;
+                document.getElementById('webhook-url').value = cfg.webhook_url || cfg.webhookUrl || '';
+                document.getElementById('webhook-platform').value = cfg.platform || 'slack';
+                document.getElementById('webhook-notify-on').value = cfg.notify_on || cfg.notifyOn || 'regression_only';
+            }
+        } catch (e) {
+            document.getElementById('webhook-enabled').checked = false;
+            document.getElementById('webhook-url').value = '';
+        }
+        openModal('modal-webhook');
+    }
+
+    async function saveWebhookConfig() {
+        const enabled = document.getElementById('webhook-enabled').checked;
+        const webhook_url = document.getElementById('webhook-url').value.trim();
+        const platform = document.getElementById('webhook-platform').value;
+        const notify_on = document.getElementById('webhook-notify-on').value;
+
+        try {
+            await api('POST', '/api/webhook/config', {
+                enabled,
+                webhook_url,
+                platform,
+                notify_on
+            });
+            closeModal();
+            toast('Webhook alert configuration saved successfully.', 'success');
+        } catch (err) {
+            toast('Failed to save webhook config: ' + err.message, 'error');
+        }
+    }
+
+    async function testWebhook() {
+        const webhook_url = document.getElementById('webhook-url').value.trim();
+        const platform = document.getElementById('webhook-platform').value;
+        const enabled = document.getElementById('webhook-enabled').checked;
+        const notify_on = document.getElementById('webhook-notify-on').value;
+
+        if (!webhook_url) {
+            toast('Please enter a Webhook URL first.', 'warning');
+            return;
+        }
+
+        try {
+            await api('POST', '/api/webhook/config', {
+                enabled,
+                webhook_url,
+                platform,
+                notify_on
+            });
+            toast('Dispatching test alert to webhook…', 'info');
+            const res = await api('POST', '/api/webhook/test');
+            if (res && res.success) {
+                toast('Webhook test notification dispatched successfully!', 'success');
+            } else {
+                toast('Webhook test sent (check destination channel).', 'info');
+            }
+        } catch (err) {
+            toast('Webhook test dispatch failed: ' + err.message, 'error');
         }
     }
 
@@ -1725,6 +2041,16 @@ const App = (() => {
         showProxySettings,
         showAbout,
         showShortcuts,
+        showOpenApiModal,
+        importOpenApiSpec,
+        openHtmlReport,
+        exportSarifReport,
+        openMarkdownReport,
+        showWebhookModal,
+        saveWebhookConfig,
+        testWebhook,
+        switchRemedTab,
+        toggleCollapsible,
         clearAllData,
         closeModal
     };

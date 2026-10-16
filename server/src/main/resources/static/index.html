@@ -28,8 +28,13 @@
                     <div class="menu-item" data-menu="project">
                         Project
                         <div class="dropdown">
+                            <button onclick="App.showOpenApiModal()">Import OpenAPI / Swagger Spec…</button>
                             <button onclick="App.importConfig()">Import YAML Config…</button>
                             <button onclick="App.exportConfig()">Export YAML Config…</button>
+                            <div class="separator"></div>
+                            <button onclick="App.openHtmlReport()">Open Executive HTML Report</button>
+                            <button onclick="App.exportSarifReport()">Export SARIF v2.1.0 Report</button>
+                            <button onclick="App.openMarkdownReport()">Export Markdown PR Report</button>
                             <div class="separator"></div>
                             <button onclick="App.clearAllData()">Clear All Data</button>
                         </div>
@@ -47,6 +52,8 @@
                             <button onclick="App.switchTab('decoder')">Decoder</button>
                             <button onclick="App.switchTab('comparer')">Comparer</button>
                             <button onclick="App.switchTab('matrix')">AuthMatrix Verifier</button>
+                            <div class="separator"></div>
+                            <button onclick="App.showWebhookModal()">Webhook Alerts Settings…</button>
                         </div>
                     </div>
                     <div class="menu-item" data-menu="help">
@@ -510,6 +517,19 @@ Accept: application/json
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                         Run Matrix Verification
                     </button>
+                    <button class="btn btn-sm btn-ghost" onclick="App.showOpenApiModal()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        Import OpenAPI
+                    </button>
+                    <button class="btn btn-sm btn-ghost" onclick="App.openHtmlReport()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                        Executive HTML
+                    </button>
+                    <button class="btn btn-sm btn-ghost" onclick="App.exportSarifReport()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        SARIF v2.1.0
+                    </button>
+                    <button class="btn btn-sm btn-ghost" onclick="App.openMarkdownReport()">Markdown</button>
                     <button class="btn btn-sm btn-ghost" onclick="App.refreshMatrix()">Refresh</button>
                     <div class="toolbar-spacer"></div>
                     <div id="matrix-summary" class="matrix-summary"></div>
@@ -744,7 +764,17 @@ Accept: application/json
                 <label style="font-size:11px;font-weight:600;color:var(--text-secondary);text-transform:uppercase">Role Credentials / Injected Auth Header</label>
                 <pre class="code-view" id="drawer-auth-header" style="max-height:80px;margin-top:6px"></pre>
             </div>
-            <div style="margin-top:8px">
+            <div class="remed-section" id="drawer-remed-section" style="display:none">
+                <div class="remed-title">🛠️ Actionable Code Remediation (DevSecOps)</div>
+                <div class="remed-tabs">
+                    <button class="remed-tab active" id="tab-remed-spring" onclick="App.switchRemedTab('spring_boot')">Spring Boot</button>
+                    <button class="remed-tab" id="tab-remed-express" onclick="App.switchRemedTab('express_js')">Express.js</button>
+                    <button class="remed-tab" id="tab-remed-fastapi" onclick="App.switchRemedTab('fastapi')">FastAPI</button>
+                    <button class="remed-tab" id="tab-remed-go" onclick="App.switchRemedTab('golang')">Go</button>
+                </div>
+                <pre class="remed-code" id="drawer-remed-code"></pre>
+            </div>
+            <div style="margin-top:12px">
                 <button class="btn btn-sm btn-primary" onclick="App.sendFindingToRepeater()" style="width:100%">Send this finding to Repeater for Exploitation</button>
             </div>
         </div>
@@ -771,6 +801,59 @@ Accept: application/json
             <div class="form-group">
                 <label>Auth Header Value / Token</label>
                 <input type="text" id="role-header-value" placeholder="Bearer eyJhbGci... or session_id=..." class="input">
+            </div>
+
+            <!-- Dynamic Token Auto-Refresh -->
+            <div class="collapsible-header" onclick="App.toggleCollapsible('role-auth-handler-body')">
+                <span>⚡ Automated Login & Token Auto-Refresh (Dynamic Auth)</span>
+                <span id="role-auth-arrow">▼</span>
+            </div>
+            <div id="role-auth-handler-body" class="collapsible-body" style="display:none">
+                <div class="form-group">
+                    <label><input type="checkbox" id="role-auth-enabled"> Enable Token Auto-Refresh</label>
+                </div>
+                <div class="form-group">
+                    <label>Login URL</label>
+                    <input type="text" id="role-auth-url" placeholder="e.g. http://localhost:3000/api/v1/auth/login" class="input">
+                </div>
+                <div class="form-row">
+                    <div class="form-group" style="width:130px">
+                        <label>Method</label>
+                        <select id="role-auth-method" class="input">
+                            <option>POST</option><option>GET</option><option>PUT</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex:1">
+                        <label>Token Path (JSONPath dot notation)</label>
+                        <input type="text" id="role-auth-token-path" value="token" placeholder="token or data.access_token" class="input">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group" style="flex:1">
+                        <label>Token Prefix</label>
+                        <input type="text" id="role-auth-prefix" value="Bearer " placeholder="Bearer " class="input">
+                    </div>
+                    <div class="form-group" style="flex:1">
+                        <label>Cache TTL (Seconds)</label>
+                        <input type="number" id="role-auth-ttl" value="300" class="input">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Login Request Body (JSON)</label>
+                    <textarea id="role-auth-body" class="input" rows="2" placeholder='{"username": "admin", "password": "secret"}'></textarea>
+                </div>
+            </div>
+
+            <!-- BOLA / IDOR Tenant Parameters -->
+            <div class="collapsible-header" onclick="App.toggleCollapsible('role-params-body')">
+                <span>🎯 Tenant & User Parameters (for BOLA / IDOR Verification)</span>
+                <span id="role-params-arrow">▼</span>
+            </div>
+            <div id="role-params-body" class="collapsible-body" style="display:none">
+                <div class="form-group">
+                    <label>Tenant ID / Parameter Map (JSON)</label>
+                    <input type="text" id="role-params-json" placeholder='{"tenantId": "101", "userId": "admin-1", "orgId": "101"}' class="input">
+                </div>
             </div>
         </div>
         <div class="modal-footer">
@@ -816,10 +899,97 @@ Accept: application/json
                 <label>Request Body Payload (optional)</label>
                 <textarea id="policy-body" class="input" rows="3" placeholder='{"action": "test"}'></textarea>
             </div>
+
+            <!-- Deep Assertions & Leak Prevention -->
+            <div class="collapsible-header" onclick="App.toggleCollapsible('policy-assertions-body')">
+                <span>🛡️ Deep Payload Assertions & Data Leak Prevention</span>
+                <span id="policy-assertions-arrow">▼</span>
+            </div>
+            <div id="policy-assertions-body" class="collapsible-body" style="display:none">
+                <div class="form-group">
+                    <label>Body Must NOT Contain (comma-separated sensitive strings / data leak detection)</label>
+                    <input type="text" id="policy-assert-not-contain" placeholder="e.g. ssn, secret_token, password, private_key" class="input">
+                </div>
+                <div class="form-group">
+                    <label>Body Must Contain (comma-separated required strings)</label>
+                    <input type="text" id="policy-assert-contain" placeholder='e.g. "status":"ok", success' class="input">
+                </div>
+                <div class="form-row">
+                    <div class="form-group" style="flex:1">
+                        <label>Required Regex Pattern</label>
+                        <input type="text" id="policy-assert-regex" placeholder="e.g. ^\{.*\}$" class="input">
+                    </div>
+                    <div class="form-group" style="flex:1">
+                        <label>Prohibited Regex Pattern</label>
+                        <input type="text" id="policy-assert-regex-not" placeholder="e.g. \b\d{3}-\d{2}-\d{4}\b" class="input">
+                    </div>
+                </div>
+            </div>
         </div>
         <div class="modal-footer">
             <button class="btn btn-ghost" onclick="App.closeModal()">Cancel</button>
             <button class="btn btn-primary" onclick="App.addPolicy()">Save Policy</button>
+        </div>
+    </div>
+
+    <!-- OpenAPI / Swagger Import Modal -->
+    <div class="modal" id="modal-openapi" style="max-width: 650px;">
+        <div class="modal-header">
+            <h3>Import OpenAPI / Swagger Specification</h3>
+            <button class="modal-close" onclick="App.closeModal()">×</button>
+        </div>
+        <div class="modal-body">
+            <p style="font-size:12px;color:var(--text-secondary);margin-bottom:12px">
+                Paste your OpenAPI 3.0, 3.1, or Swagger 2.0 specification (JSON or YAML) below. AuthMatrix Pro will automatically extract routes, methods, sample payloads, and generate an authorization contract matrix!
+            </p>
+            <div class="form-group">
+                <label>Specification JSON or YAML</label>
+                <textarea id="openapi-spec-input" class="input" style="height:280px;font-family:var(--font-mono);font-size:11px" placeholder="Paste swagger: '2.0' or openapi: 3.0.0 JSON/YAML specification here..."></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="App.closeModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="App.importOpenApiSpec()">Import & Generate Policies</button>
+        </div>
+    </div>
+
+    <!-- Webhook Alerts Configuration Modal -->
+    <div class="modal" id="modal-webhook" style="max-width: 520px;">
+        <div class="modal-header">
+            <h3>Webhook Regression Alerts (CI/CD)</h3>
+            <button class="modal-close" onclick="App.closeModal()">×</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label><input type="checkbox" id="webhook-enabled"> Enable Automated Webhook Notifications</label>
+            </div>
+            <div class="form-group">
+                <label>Webhook URL (Slack, Discord, or Generic HTTP)</label>
+                <input type="text" id="webhook-url" placeholder="https://hooks.slack.com/services/... or https://discord.com/api/webhooks/..." class="input">
+            </div>
+            <div class="form-row">
+                <div class="form-group" style="flex:1">
+                    <label>Platform / Format</label>
+                    <select id="webhook-platform" class="input">
+                        <option value="slack">Slack</option>
+                        <option value="discord">Discord</option>
+                        <option value="generic">Generic JSON Webhook</option>
+                    </select>
+                </div>
+                <div class="form-group" style="flex:1">
+                    <label>Trigger On</label>
+                    <select id="webhook-notify-on" class="input">
+                        <option value="all">All Verification Runs</option>
+                        <option value="regression_only" selected>Regressions & BOLA Only</option>
+                        <option value="bola_only">BOLA / IDOR Violations Only</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="App.testWebhook()">Test Alert</button>
+            <button class="btn btn-ghost" onclick="App.closeModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="App.saveWebhookConfig()">Save Settings</button>
         </div>
     </div>
 

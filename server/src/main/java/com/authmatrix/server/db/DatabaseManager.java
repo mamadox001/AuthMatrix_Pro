@@ -56,6 +56,8 @@ public class DatabaseManager {
                   name TEXT NOT NULL UNIQUE,
                   header_name TEXT NOT NULL,
                   header_value TEXT NOT NULL,
+                  auth_handler_json TEXT,
+                  params_json TEXT,
                   created_at TEXT NOT NULL
                 );
             """);
@@ -69,6 +71,7 @@ public class DatabaseManager {
                   headers_json TEXT NOT NULL,
                   body_text TEXT,
                   expect_json TEXT NOT NULL,
+                  assertions_json TEXT,
                   created_at TEXT NOT NULL
                 );
             """);
@@ -88,10 +91,29 @@ public class DatabaseManager {
                   duration_ms INTEGER NOT NULL,
                   verdict TEXT NOT NULL,
                   error_message TEXT,
+                  assertion_failure TEXT,
+                  bola_detected INTEGER,
+                  remediation_json TEXT,
                   evaluated_at TEXT NOT NULL
                 );
             """);
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_matrix_run_id ON matrix_results(run_id);");
+
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS system_settings (
+                  key TEXT PRIMARY KEY,
+                  value TEXT NOT NULL,
+                  updated_at TEXT NOT NULL
+                );
+            """);
+
+            // Migration alter statements for backwards compatibility with pre-existing tables
+            applyMigration(stmt, "ALTER TABLE auth_roles ADD COLUMN auth_handler_json TEXT;");
+            applyMigration(stmt, "ALTER TABLE auth_roles ADD COLUMN params_json TEXT;");
+            applyMigration(stmt, "ALTER TABLE endpoint_policies ADD COLUMN assertions_json TEXT;");
+            applyMigration(stmt, "ALTER TABLE matrix_results ADD COLUMN assertion_failure TEXT;");
+            applyMigration(stmt, "ALTER TABLE matrix_results ADD COLUMN bola_detected INTEGER;");
+            applyMigration(stmt, "ALTER TABLE matrix_results ADD COLUMN remediation_json TEXT;");
 
             // Seed default roles if empty
             try (ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM auth_roles")) {
@@ -104,16 +126,26 @@ public class DatabaseManager {
         }
     }
 
+    private void applyMigration(Statement stmt, String sql) {
+        try {
+            stmt.execute(sql);
+        } catch (SQLException ignored) {
+            // Column already exists
+        }
+    }
+
     private void seedDefaultRoles(Connection conn) throws SQLException {
         String now = Instant.now().toString();
-        String sql = "INSERT INTO auth_roles (id, name, header_name, header_value, created_at) VALUES (?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO auth_roles (id, name, header_name, header_value, auth_handler_json, params_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             // admin
             ps.setString(1, UUID.randomUUID().toString());
             ps.setString(2, "admin");
             ps.setString(3, "Authorization");
             ps.setString(4, "Bearer admin-token-secret");
-            ps.setString(5, now);
+            ps.setString(5, null);
+            ps.setString(6, JsonUtils.toJson(Map.of("tenantId", "101", "userId", "admin-1", "orgId", "101")));
+            ps.setString(7, now);
             ps.addBatch();
 
             // member_a
@@ -121,7 +153,9 @@ public class DatabaseManager {
             ps.setString(2, "member_a");
             ps.setString(3, "Authorization");
             ps.setString(4, "Bearer member-a-token");
-            ps.setString(5, now);
+            ps.setString(5, null);
+            ps.setString(6, JsonUtils.toJson(Map.of("tenantId", "101", "userId", "member-1", "orgId", "101")));
+            ps.setString(7, now);
             ps.addBatch();
 
             // guest
@@ -129,7 +163,9 @@ public class DatabaseManager {
             ps.setString(2, "guest");
             ps.setString(3, "Authorization");
             ps.setString(4, "");
-            ps.setString(5, now);
+            ps.setString(5, null);
+            ps.setString(6, JsonUtils.toJson(Map.of("tenantId", "0", "userId", "guest", "orgId", "0")));
+            ps.setString(7, now);
             ps.addBatch();
 
             ps.executeBatch();
@@ -207,15 +243,33 @@ public class DatabaseManager {
 
     // Roles
     public synchronized List<Role> listRoles() {
-        String sql = "SELECT id, name, header_name, header_value, created_at FROM auth_roles ORDER BY created_at ASC";
+        String sql = "SELECT id, name, header_name, header_value, auth_handler_json, params_json, created_at FROM auth_roles ORDER BY created_at ASC";
         List<Role> roles = new ArrayList<>();
         try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
+                AuthHandler authHandler = null;
+                String authHandlerJson = rs.getString("auth_handler_json");
+                if (authHandlerJson != null && !authHandlerJson.isBlank()) {
+                    try {
+                        authHandler = JsonUtils.fromJson(authHandlerJson, AuthHandler.class);
+                    } catch (Exception ignored) {}
+                }
+
+                Map<String, String> params = new HashMap<>();
+                String paramsJson = rs.getString("params_json");
+                if (paramsJson != null && !paramsJson.isBlank()) {
+                    try {
+                        params = JsonUtils.getJsonMapper().readValue(paramsJson, new TypeReference<Map<String, String>>() {});
+                    } catch (Exception ignored) {}
+                }
+
                 roles.add(new Role(
                         rs.getString("id"),
                         rs.getString("name"),
                         rs.getString("header_name"),
                         rs.getString("header_value"),
+                        authHandler,
+                        params,
                         rs.getString("created_at")
                 ));
             }
@@ -240,17 +294,22 @@ public class DatabaseManager {
                 }
             }
 
+            String authHandlerJson = input.getAuthHandler() != null ? JsonUtils.toJson(input.getAuthHandler()) : null;
+            String paramsJson = input.getParams() != null ? JsonUtils.toJson(input.getParams()) : null;
+
             if (existingId != null) {
-                String updateSql = "UPDATE auth_roles SET header_name = ?, header_value = ? WHERE id = ?";
+                String updateSql = "UPDATE auth_roles SET header_name = ?, header_value = ?, auth_handler_json = ?, params_json = ? WHERE id = ?";
                 try (PreparedStatement ps = conn.prepareStatement(updateSql)) {
                     ps.setString(1, input.getHeaderName());
                     ps.setString(2, input.getHeaderValue());
-                    ps.setString(3, existingId);
+                    ps.setString(3, authHandlerJson);
+                    ps.setString(4, paramsJson);
+                    ps.setString(5, existingId);
                     ps.executeUpdate();
                 }
-                return new Role(existingId, input.getName(), input.getHeaderName(), input.getHeaderValue(), createdAt);
+                return new Role(existingId, input.getName(), input.getHeaderName(), input.getHeaderValue(), input.getAuthHandler(), input.getParams(), createdAt);
             } else {
-                String insertSql = "INSERT INTO auth_roles (id, name, header_name, header_value, created_at) VALUES (?, ?, ?, ?, ?)";
+                String insertSql = "INSERT INTO auth_roles (id, name, header_name, header_value, auth_handler_json, params_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)";
                 String newId = UUID.randomUUID().toString();
                 String now = Instant.now().toString();
                 try (PreparedStatement ps = conn.prepareStatement(insertSql)) {
@@ -258,13 +317,27 @@ public class DatabaseManager {
                     ps.setString(2, input.getName());
                     ps.setString(3, input.getHeaderName());
                     ps.setString(4, input.getHeaderValue());
-                    ps.setString(5, now);
+                    ps.setString(5, authHandlerJson);
+                    ps.setString(6, paramsJson);
+                    ps.setString(7, now);
                     ps.executeUpdate();
                 }
-                return new Role(newId, input.getName(), input.getHeaderName(), input.getHeaderValue(), now);
+                return new Role(newId, input.getName(), input.getHeaderName(), input.getHeaderValue(), input.getAuthHandler(), input.getParams(), now);
             }
         } catch (SQLException e) {
             throw new RuntimeException("Error upserting role: " + e.getMessage(), e);
+        }
+    }
+
+    public synchronized void updateRoleHeader(String roleName, String headerValue, String authHandlerJson) {
+        String sql = "UPDATE auth_roles SET header_value = ?, auth_handler_json = ? WHERE name = ?";
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, headerValue);
+            ps.setString(2, authHandlerJson);
+            ps.setString(3, roleName);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException("Error updating role header value: " + e.getMessage(), e);
         }
     }
 
@@ -292,6 +365,15 @@ public class DatabaseManager {
                         rs.getString("expect_json"),
                         new TypeReference<Map<String, Integer>>() {}
                 );
+
+                PolicyAssertion assertions = null;
+                String assertionsJson = rs.getString("assertions_json");
+                if (assertionsJson != null && !assertionsJson.isBlank()) {
+                    try {
+                        assertions = JsonUtils.fromJson(assertionsJson, PolicyAssertion.class);
+                    } catch (Exception ignored) {}
+                }
+
                 endpoints.add(new EndpointPolicy(
                         rs.getString("id"),
                         rs.getString("name"),
@@ -300,6 +382,7 @@ public class DatabaseManager {
                         headers,
                         rs.getString("body_text"),
                         expect,
+                        assertions,
                         rs.getString("created_at")
                 ));
             }
@@ -310,9 +393,11 @@ public class DatabaseManager {
     }
 
     public synchronized EndpointPolicy createEndpoint(CreateEndpointPolicyInput input) {
-        String sql = "INSERT INTO endpoint_policies (id, name, method, path, headers_json, body_text, expect_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO endpoint_policies (id, name, method, path, headers_json, body_text, expect_json, assertions_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
         String id = UUID.randomUUID().toString();
         String now = Instant.now().toString();
+        String assertionsJson = input.getAssertions() != null ? JsonUtils.toJson(input.getAssertions()) : null;
+
         try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, id);
             ps.setString(2, input.getName());
@@ -321,16 +406,19 @@ public class DatabaseManager {
             ps.setString(5, JsonUtils.toJson(input.getHeaders()));
             ps.setString(6, input.getBody());
             ps.setString(7, JsonUtils.toJson(input.getExpect()));
-            ps.setString(8, now);
+            ps.setString(8, assertionsJson);
+            ps.setString(9, now);
             ps.executeUpdate();
-            return new EndpointPolicy(id, input.getName(), input.getMethod(), input.getPath(), input.getHeaders(), input.getBody(), input.getExpect(), now);
+            return new EndpointPolicy(id, input.getName(), input.getMethod(), input.getPath(), input.getHeaders(), input.getBody(), input.getExpect(), input.getAssertions(), now);
         } catch (SQLException e) {
             throw new RuntimeException("Error creating endpoint policy: " + e.getMessage(), e);
         }
     }
 
     public synchronized EndpointPolicy updateEndpoint(String id, CreateEndpointPolicyInput input) {
-        String sql = "UPDATE endpoint_policies SET name = ?, method = ?, path = ?, headers_json = ?, body_text = ?, expect_json = ? WHERE id = ?";
+        String sql = "UPDATE endpoint_policies SET name = ?, method = ?, path = ?, headers_json = ?, body_text = ?, expect_json = ?, assertions_json = ? WHERE id = ?";
+        String assertionsJson = input.getAssertions() != null ? JsonUtils.toJson(input.getAssertions()) : null;
+
         try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, input.getName());
             ps.setString(2, input.getMethod().name());
@@ -338,9 +426,10 @@ public class DatabaseManager {
             ps.setString(4, JsonUtils.toJson(input.getHeaders()));
             ps.setString(5, input.getBody());
             ps.setString(6, JsonUtils.toJson(input.getExpect()));
-            ps.setString(7, id);
+            ps.setString(7, assertionsJson);
+            ps.setString(8, id);
             ps.executeUpdate();
-            return new EndpointPolicy(id, input.getName(), input.getMethod(), input.getPath(), input.getHeaders(), input.getBody(), input.getExpect(), null);
+            return new EndpointPolicy(id, input.getName(), input.getMethod(), input.getPath(), input.getHeaders(), input.getBody(), input.getExpect(), input.getAssertions(), null);
         } catch (SQLException e) {
             throw new RuntimeException("Error updating endpoint policy: " + e.getMessage(), e);
         }
@@ -360,8 +449,8 @@ public class DatabaseManager {
     public synchronized void insertMatrixResults(List<MatrixResult> results) {
         String sql = """
             INSERT INTO matrix_results
-            (id, run_id, endpoint_id, endpoint_name, endpoint_method, endpoint_path, role_name, expected_status, actual_status, response_bytes, duration_ms, verdict, error_message, evaluated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, run_id, endpoint_id, endpoint_name, endpoint_method, endpoint_path, role_name, expected_status, actual_status, response_bytes, duration_ms, verdict, error_message, assertion_failure, bola_detected, remediation_json, evaluated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """;
         try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             for (MatrixResult r : results) {
@@ -378,7 +467,10 @@ public class DatabaseManager {
                 ps.setLong(11, r.getDurationMs());
                 ps.setString(12, r.getVerdict().name());
                 ps.setString(13, r.getErrorMessage());
-                ps.setString(14, r.getEvaluatedAt());
+                ps.setString(14, r.getAssertionFailure());
+                ps.setInt(15, r.isBolaDetected() ? 1 : 0);
+                ps.setString(16, r.getRemediation() != null && !r.getRemediation().isEmpty() ? JsonUtils.toJson(r.getRemediation()) : null);
+                ps.setString(17, r.getEvaluatedAt());
                 ps.addBatch();
             }
             ps.executeBatch();
@@ -408,6 +500,14 @@ public class DatabaseManager {
             ps.setString(1, latestRunId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
+                    Map<String, String> remediation = new HashMap<>();
+                    String remedJson = rs.getString("remediation_json");
+                    if (remedJson != null && !remedJson.isBlank()) {
+                        try {
+                            remediation = JsonUtils.getJsonMapper().readValue(remedJson, new TypeReference<Map<String, String>>() {});
+                        } catch (Exception ignored) {}
+                    }
+
                     results.add(new MatrixResult(
                             rs.getString("id"),
                             rs.getString("run_id"),
@@ -422,6 +522,9 @@ public class DatabaseManager {
                             rs.getLong("duration_ms"),
                             Verdict.valueOf(rs.getString("verdict")),
                             rs.getString("error_message"),
+                            rs.getString("assertion_failure"),
+                            rs.getInt("bola_detected") == 1,
+                            remediation,
                             rs.getString("evaluated_at")
                     ));
                 }
@@ -431,6 +534,44 @@ public class DatabaseManager {
         }
 
         return new MatrixRunResult(latestRunId, results);
+    }
+
+    // System Settings & Webhooks
+    public synchronized String getSetting(String key, String defaultValue) {
+        String sql = "SELECT value FROM system_settings WHERE key = ?";
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, key);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return rs.getString("value");
+            }
+        } catch (SQLException ignored) {}
+        return defaultValue;
+    }
+
+    public synchronized void saveSetting(String key, String value) {
+        String sql = "INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at";
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, key);
+            ps.setString(2, value);
+            ps.setString(3, Instant.now().toString());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException("Error saving setting: " + e.getMessage(), e);
+        }
+    }
+
+    public synchronized WebhookConfig getWebhookConfig() {
+        String json = getSetting("webhook_config", null);
+        if (json != null && !json.isBlank()) {
+            try {
+                return JsonUtils.fromJson(json, WebhookConfig.class);
+            } catch (Exception ignored) {}
+        }
+        return new WebhookConfig(false, "", "generic", "all");
+    }
+
+    public synchronized void saveWebhookConfig(WebhookConfig config) {
+        saveSetting("webhook_config", JsonUtils.toJson(config));
     }
 
     public synchronized void clearEndpoints() {

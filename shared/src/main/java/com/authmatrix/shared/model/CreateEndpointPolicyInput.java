@@ -22,17 +22,26 @@ public class CreateEndpointPolicyInput {
 
     private Map<String, Integer> expect = new HashMap<>();
 
+    private PolicyAssertion assertions;
+
     public CreateEndpointPolicyInput() {}
 
     public CreateEndpointPolicyInput(String name, HttpMethod method, String path,
                                      Map<String, String> headers, String body,
                                      Map<String, Integer> expect) {
+        this(name, method, path, headers, body, expect, null);
+    }
+
+    public CreateEndpointPolicyInput(String name, HttpMethod method, String path,
+                                     Map<String, String> headers, String body,
+                                     Map<String, Integer> expect, PolicyAssertion assertions) {
         this.name = name;
         this.method = method != null ? method : HttpMethod.GET;
         this.path = path != null ? path : "/";
         this.headers = headers != null ? headers : new HashMap<>();
         this.body = body;
         this.expect = expect != null ? expect : new HashMap<>();
+        this.assertions = assertions;
     }
 
     public String getName() { return name; }
@@ -52,4 +61,7 @@ public class CreateEndpointPolicyInput {
 
     public Map<String, Integer> getExpect() { return expect; }
     public void setExpect(Map<String, Integer> expect) { this.expect = expect != null ? expect : new HashMap<>(); }
+
+    public PolicyAssertion getAssertions() { return assertions; }
+    public void setAssertions(PolicyAssertion assertions) { this.assertions = assertions; }
 }
