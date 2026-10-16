@@ -1,0 +1,31 @@
+# Build output
+target/
+**/target/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.project
+.classpath
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node (web frontend)
+web/node_modules/
+web/dist/
+
+# Database
+*.db
+*.db-wal
+*.db-shm
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log

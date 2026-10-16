@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="AuthMatrix — Local-first HTTP API debugging proxy and declarative RBAC contract verification platform">
+    <title>AuthMatrix — Security Suite Pro</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/app.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23FF6633'/><text x='16' y='23' text-anchor='middle' fill='white' font-size='18' font-family='monospace' font-weight='bold'>A</text></svg>">
+</head>
+<body>
+    <div id="app">
+        <!-- Top Menu Bar -->
+        <header id="menu-bar">
+            <div class="menu-left">
+                <div class="logo">
+                    <svg width="24" height="24" viewBox="0 0 32 32">
+                        <rect width="32" height="32" rx="6" fill="#FF6633"/>
+                        <text x="16" y="23" text-anchor="middle" fill="white" font-size="18" font-family="monospace" font-weight="bold">A</text>
+                    </svg>
+                    <span class="logo-text">AuthMatrix</span>
+                    <span class="logo-version">v0.1.0 Pro</span>
+                </div>
+                <nav class="menu-items">
+                    <div class="menu-item" data-menu="project">
+                        Project
+                        <div class="dropdown">
+                            <button onclick="App.importConfig()">Import YAML Config…</button>
+                            <button onclick="App.exportConfig()">Export YAML Config…</button>
+                            <div class="separator"></div>
+                            <button onclick="App.clearAllData()">Clear All Data</button>
+                        </div>
+                    </div>
+                    <div class="menu-item" data-menu="proxy">
+                        Proxy
+                        <div class="dropdown">
+                            <button onclick="App.switchTab('proxy'); App.showProxySettings()">Proxy Settings…</button>
+                            <button onclick="App.toggleIntercept()">Toggle Intercept</button>
+                        </div>
+                    </div>
+                    <div class="menu-item" data-menu="tools">
+                        Tools
+                        <div class="dropdown">
+                            <button onclick="App.switchTab('decoder')">Decoder</button>
+                            <button onclick="App.switchTab('comparer')">Comparer</button>
+                            <button onclick="App.switchTab('matrix')">AuthMatrix Verifier</button>
+                        </div>
+                    </div>
+                    <div class="menu-item" data-menu="help">
+                        Help
+                        <div class="dropdown">
+                            <button onclick="App.showAbout()">About AuthMatrix</button>
+                            <button onclick="App.showShortcuts()">Keyboard Shortcuts</button>
+                        </div>
+                    </div>
+                </nav>
+            </div>
+            <div class="menu-right">
+                <div class="status-indicators">
+                    <div class="indicator" id="proxy-status">
+                        <span class="dot dot-active"></span>
+                        <span id="proxy-status-text">Proxy: :8080</span>
+                    </div>
+                    <div class="indicator" id="ws-status">
+                        <span class="dot dot-inactive"></span>
+                        <span>WS: Disconnected</span>
+                    </div>
+                    <div class="indicator" id="db-status">
+                        <span class="dot dot-active"></span>
+                        <span>DB: WAL</span>
+                    </div>
+                </div>
+                <div class="target-url-container">
+                    <label for="target-url-input">Target:</label>
+                    <input type="text" id="target-url-input" placeholder="http://localhost:3000" value="http://localhost:3000">
+                    <button class="btn btn-xs btn-primary" onclick="App.setTarget()">Set</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Tab Bar (AuthMatrix Professional Style) -->
+        <div id="main-tabs">
+            <button class="tab active" data-tab="dashboard" onclick="App.switchTab('dashboard')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                Dashboard
+            </button>
+            <button class="tab" data-tab="target" onclick="App.switchTab('target')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                Target
+            </button>
+            <button class="tab" data-tab="proxy" onclick="App.switchTab('proxy')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                Proxy
+            </button>
+            <button class="tab" data-tab="history" onclick="App.switchTab('history')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                HTTP History
+            </button>
+            <button class="tab" data-tab="repeater" onclick="App.switchTab('repeater')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                Repeater
+            </button>
+            <button class="tab" data-tab="matrix" onclick="App.switchTab('matrix')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+                AuthMatrix
+            </button>
+            <button class="tab" data-tab="roles" onclick="App.switchTab('roles')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                Roles
+            </button>
+            <button class="tab" data-tab="policies" onclick="App.switchTab('policies')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                Policies
+            </button>
+            <button class="tab" data-tab="decoder" onclick="App.switchTab('decoder')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                Decoder
+            </button>
+            <button class="tab" data-tab="comparer" onclick="App.switchTab('comparer')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="18"/><rect x="14" y="3" width="7" height="18"/></svg>
+                Comparer
+            </button>
+            <button class="tab" data-tab="settings" onclick="App.switchTab('settings')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                Settings
+            </button>
+        </div>
+
+        <!-- Tab Content Panels -->
+        <main id="tab-content">
+
+            <!-- ========== DASHBOARD TAB ========== -->
+            <div class="tab-panel active" id="panel-dashboard">
+                <div class="dashboard-grid">
+                    <div class="dash-card stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #FF6633, #FF8855);">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                        </div>
+                        <div class="stat-info">
+                            <div class="stat-value" id="stat-total-requests">0</div>
+                            <div class="stat-label">Total Proxied Requests</div>
+                        </div>
+                    </div>
+                    <div class="dash-card stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #00C853, #69F0AE);">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                        </div>
+                        <div class="stat-info">
+                            <div class="stat-value" id="stat-pass-count">0</div>
+                            <div class="stat-label">RBAC Passed Contracts</div>
+                        </div>
+                    </div>
+                    <div class="dash-card stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #FF1744, #FF5252);">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                        </div>
+                        <div class="stat-info">
+                            <div class="stat-value" id="stat-fail-count">0</div>
+                            <div class="stat-label">Critical RBAC Regressions</div>
+                        </div>
+                    </div>
+                    <div class="dash-card stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #2979FF, #448AFF);">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                        </div>
+                        <div class="stat-info">
+                            <div class="stat-value" id="stat-role-count">0</div>
+                            <div class="stat-label">Security Roles</div>
+                        </div>
+                    </div>
+                    <div class="dash-card wide-card">
+                        <h3 class="card-title">Live Captured Traffic Feed</h3>
+                        <div id="recent-activity" class="activity-feed">
+                            <div class="empty-state">
+                                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                                <p>No activity yet. Direct your HTTP client to reverse proxy port 8080.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="dash-card">
+                        <h3 class="card-title">Security Quick Actions</h3>
+                        <div class="quick-actions">
+                            <button class="action-btn" onclick="App.switchTab('matrix'); App.runMatrix()">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/></svg>
+                                Run AuthMatrix
+                            </button>
+                            <button class="action-btn" onclick="App.switchTab('repeater')">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/></svg>
+                                Open Repeater
+                            </button>
+                            <button class="action-btn" onclick="App.switchTab('decoder')">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                                Open Decoder
+                            </button>
+                            <button class="action-btn" onclick="App.importConfig()">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                Import Spec
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== TARGET TAB (SITE MAP & SCOPE) ========== -->
+            <div class="tab-panel" id="panel-target">
+                <div class="target-layout">
+                    <div class="sitemap-sidebar">
+                        <div class="sitemap-header">
+                            <span>Site Map Tree</span>
+                            <button class="btn btn-xs btn-ghost" onclick="App.refreshTargetSiteMap()">Refresh</button>
+                        </div>
+                        <div class="sitemap-tree" id="sitemap-tree">
+                            <div class="tree-node active">
+                                <span class="tree-icon">🌐</span>
+                                <span id="sitemap-host-label">http://localhost:3000</span>
+                            </div>
+                            <div id="sitemap-endpoints-tree" style="padding-left:14px"></div>
+                        </div>
+                    </div>
+                    <div class="target-detail">
+                        <div class="proxy-toolbar">
+                            <span class="badge" id="target-count-badge">Discovered Endpoints</span>
+                            <div class="toolbar-spacer"></div>
+                            <button class="btn btn-sm btn-ghost" onclick="App.exportTargetSiteMap()">Export Scope</button>
+                        </div>
+                        <div class="table-container" style="flex:1">
+                            <table class="data-table" id="target-endpoints-table">
+                                <thead>
+                                    <tr>
+                                        <th>Method</th>
+                                        <th>Discovered Path</th>
+                                        <th>Requests</th>
+                                        <th>Last Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="target-endpoints-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== PROXY TAB ========== -->
+            <div class="tab-panel" id="panel-proxy">
+                <div class="proxy-toolbar">
+                    <button class="btn btn-sm" id="btn-intercept" onclick="App.toggleIntercept()">
+                        <span class="intercept-dot"></span>
+                        Intercept is OFF
+                    </button>
+                    <button class="btn btn-sm btn-ghost" onclick="App.forwardRequest()">Forward</button>
+                    <button class="btn btn-sm btn-ghost" onclick="App.dropRequest()">Drop</button>
+                    <button class="btn btn-sm btn-ghost" onclick="App.sendToRepeater()">Send to Repeater</button>
+                    <div class="toolbar-spacer"></div>
+                    <div class="filter-group">
+                        <input type="text" id="proxy-filter" placeholder="Filter proxy traffic…" class="input-sm">
+                    </div>
+                </div>
+                <div class="split-h" id="proxy-split">
+                    <div class="split-top" id="proxy-request-pane">
+                        <div class="pane-tabs">
+                            <button class="pane-tab active" onclick="App.switchProxyPane('raw-req')">Raw</button>
+                            <button class="pane-tab" onclick="App.switchProxyPane('headers-req')">Headers</button>
+                            <button class="pane-tab" onclick="App.switchProxyPane('params-req')">Params</button>
+                            <button class="pane-tab" onclick="App.switchProxyPane('hex-req')">Hex</button>
+                        </div>
+                        <div class="pane-content">
+                            <div class="pane-panel active" id="pane-raw-req">
+                                <pre class="code-view" id="proxy-raw-request" contenteditable="true" spellcheck="false">GET /api/users HTTP/1.1
+Host: localhost:3000
+User-Agent: AuthMatrix/0.1.0 (Security Edition)
+Accept: application/json
+
+</pre>
+                            </div>
+                            <div class="pane-panel" id="pane-headers-req">
+                                <table class="header-table"><thead><tr><th>Header Name</th><th>Header Value</th></tr></thead><tbody id="proxy-headers-table"></tbody></table>
+                            </div>
+                            <div class="pane-panel" id="pane-params-req">
+                                <div class="empty-state small" id="proxy-params-container">No query or body parameters</div>
+                            </div>
+                            <div class="pane-panel" id="pane-hex-req">
+                                <pre class="hex-view" id="proxy-hex-request"></pre>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="split-handle-h" id="proxy-handle"></div>
+                    <div class="split-bottom" id="proxy-response-pane">
+                        <div class="pane-tabs">
+                            <button class="pane-tab active" onclick="App.switchProxyRespPane('raw-resp')">Raw</button>
+                            <button class="pane-tab" onclick="App.switchProxyRespPane('headers-resp')">Headers</button>
+                            <button class="pane-tab" onclick="App.switchProxyRespPane('pretty-resp')">Pretty</button>
+                            <button class="pane-tab" onclick="App.switchProxyRespPane('hex-resp')">Hex</button>
+                        </div>
+                        <div class="pane-content">
+                            <div class="pane-panel active" id="pane-raw-resp">
+                                <pre class="code-view" id="proxy-raw-response">Waiting for traffic through reverse proxy…</pre>
+                            </div>
+                            <div class="pane-panel" id="pane-headers-resp">
+                                <table class="header-table"><thead><tr><th>Header Name</th><th>Header Value</th></tr></thead><tbody id="proxy-resp-headers-table"></tbody></table>
+                            </div>
+                            <div class="pane-panel" id="pane-pretty-resp">
+                                <pre class="code-view" id="proxy-pretty-response"></pre>
+                            </div>
+                            <div class="pane-panel" id="pane-hex-resp">
+                                <pre class="hex-view" id="proxy-hex-response"></pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== HTTP HISTORY TAB ========== -->
+            <div class="tab-panel" id="panel-history">
+                <div class="proxy-toolbar">
+                    <input type="text" id="history-filter" placeholder="Filter: method, path, status, URL…" class="input-sm" style="width:360px" oninput="App.filterHistory()">
+                    <div class="toolbar-spacer"></div>
+                    <button class="btn btn-sm btn-primary" onclick="App.sendHistoryToRepeater()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/></svg>
+                        Send to Repeater
+                    </button>
+                    <button class="btn btn-sm btn-ghost" onclick="App.sendHistoryToPolicy()">Create Policy</button>
+                    <button class="btn btn-sm btn-ghost" onclick="App.copyHistoryAsCurl()">Copy as cURL</button>
+                    <button class="btn btn-sm btn-ghost" onclick="App.refreshHistory()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                        Refresh
+                    </button>
+                    <button class="btn btn-sm btn-ghost" onclick="App.clearHistory()">Clear</button>
+                    <span class="badge" id="history-count">0 items</span>
+                </div>
+                <div class="split-h">
+                    <div class="split-top" style="height:45%">
+                        <div class="table-container">
+                            <table class="data-table" id="history-table">
+                                <thead>
+                                    <tr>
+                                        <th class="col-id">#</th>
+                                        <th class="col-method">Method</th>
+                                        <th class="col-url">Target URL / Path</th>
+                                        <th class="col-status">Status</th>
+                                        <th class="col-length">Length</th>
+                                        <th class="col-time">Time</th>
+                                        <th class="col-timestamp">Timestamp</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="history-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="split-handle-h"></div>
+                    <div class="split-bottom" style="height:55%">
+                        <div class="split-v">
+                            <div class="split-left" style="width:50%" id="hist-req-container">
+                                <div class="pane-header">Request Inspector</div>
+                                <div class="pane-tabs" id="hist-req-tabs">
+                                    <button class="pane-tab active" onclick="App.switchHistReqPane('raw')">Raw</button>
+                                    <button class="pane-tab" onclick="App.switchHistReqPane('headers')">Headers</button>
+                                    <button class="pane-tab" onclick="App.switchHistReqPane('body')">Body</button>
+                                    <button class="pane-tab" onclick="App.switchHistReqPane('hex')">Hex</button>
+                                </div>
+                                <div class="pane-content">
+                                    <div class="pane-panel active" id="pane-hist-req-raw">
+                                        <pre class="code-view flex-1" id="history-request-view">Select a request from the table above</pre>
+                                    </div>
+                                    <div class="pane-panel" id="pane-hist-req-headers">
+                                        <table class="header-table"><thead><tr><th>Header Name</th><th>Header Value</th></tr></thead><tbody id="hist-req-headers-tbody"></tbody></table>
+                                    </div>
+                                    <div class="pane-panel" id="pane-hist-req-body">
+                                        <pre class="code-view flex-1" id="hist-req-body-view"></pre>
+                                    </div>
+                                    <div class="pane-panel" id="pane-hist-req-hex">
+                                        <pre class="hex-view flex-1" id="hist-req-hex-view"></pre>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="split-handle-v"></div>
+                            <div class="split-right" style="width:50%" id="hist-resp-container">
+                                <div class="pane-header">Response Inspector</div>
+                                <div class="pane-tabs" id="hist-resp-tabs">
+                                    <button class="pane-tab active" onclick="App.switchHistRespPane('pretty')">Pretty</button>
+                                    <button class="pane-tab" onclick="App.switchHistRespPane('raw')">Raw</button>
+                                    <button class="pane-tab" onclick="App.switchHistRespPane('headers')">Headers</button>
+                                    <button class="pane-tab" onclick="App.switchHistRespPane('hex')">Hex</button>
+                                    <button class="pane-tab" onclick="App.switchHistRespPane('render')">Render</button>
+                                </div>
+                                <div class="pane-content">
+                                    <div class="pane-panel active" id="pane-hist-resp-pretty">
+                                        <pre class="code-view flex-1" id="hist-resp-pretty-view">Select a request from the table above</pre>
+                                    </div>
+                                    <div class="pane-panel" id="pane-hist-resp-raw">
+                                        <pre class="code-view flex-1" id="history-response-view"></pre>
+                                    </div>
+                                    <div class="pane-panel" id="pane-hist-resp-headers">
+                                        <table class="header-table"><thead><tr><th>Header Name</th><th>Header Value</th></tr></thead><tbody id="hist-resp-headers-tbody"></tbody></table>
+                                    </div>
+                                    <div class="pane-panel" id="pane-hist-resp-hex">
+                                        <pre class="hex-view flex-1" id="hist-resp-hex-view"></pre>
+                                    </div>
+                                    <div class="pane-panel" id="pane-hist-resp-render">
+                                        <iframe id="hist-render-iframe" class="render-frame-container" sandbox=""></iframe>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== REPEATER TAB (MULTI-TAB ENGINE) ========== -->
+            <div class="tab-panel" id="panel-repeater">
+                <div class="proxy-toolbar">
+                    <div class="repeater-tabs" id="repeater-tab-bar">
+                        <button class="repeater-tab active" data-idx="0" onclick="App.switchRepeaterTab(0)">
+                            Request 1
+                        </button>
+                    </div>
+                    <button class="btn btn-xs btn-ghost" onclick="App.addRepeaterTab()">+ New</button>
+                    <div class="toolbar-spacer"></div>
+                    <button class="btn btn-sm btn-primary" onclick="App.sendRepeater()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                        Send
+                    </button>
+                    <select id="repeater-method" class="select-sm">
+                        <option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option><option>OPTIONS</option><option>HEAD</option>
+                    </select>
+                    <input type="text" id="repeater-url" class="input-sm" style="flex:1" placeholder="http://localhost:3000/api/users" value="">
+                    <button class="btn btn-sm btn-ghost" onclick="App.sendRepeaterToPolicy()">Send to AuthMatrix</button>
+                </div>
+                <div class="split-v" style="height: calc(100% - 40px)">
+                    <div class="split-left" style="width:50%">
+                        <div class="pane-header">Request Inspector</div>
+                        <div class="pane-tabs">
+                            <button class="pane-tab active" onclick="App.switchRepeaterReqPane('headers')">Headers</button>
+                            <button class="pane-tab" onclick="App.switchRepeaterReqPane('body')">Body</button>
+                            <button class="pane-tab" onclick="App.switchRepeaterReqPane('raw')">Raw</button>
+                        </div>
+                        <div id="rep-req-headers-section">
+                            <div class="repeater-kv-editor">
+                                <table class="kv-table" id="repeater-headers-tbl">
+                                    <thead><tr><th></th><th>Header Name</th><th>Header Value</th><th></th></tr></thead>
+                                    <tbody>
+                                        <tr>
+                                            <td><input type="checkbox" checked></td>
+                                            <td><input type="text" value="Content-Type" class="kv-key"></td>
+                                            <td><input type="text" value="application/json" class="kv-val"></td>
+                                            <td><button class="btn-icon" onclick="this.closest('tr').remove()">×</button></td>
+                                        </tr>
+                                        <tr>
+                                            <td><input type="checkbox" checked></td>
+                                            <td><input type="text" value="Accept" class="kv-key"></td>
+                                            <td><input type="text" value="application/json" class="kv-val"></td>
+                                            <td><button class="btn-icon" onclick="this.closest('tr').remove()">×</button></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                                <button class="btn btn-xs btn-ghost" onclick="App.addRepeaterHeader()" style="margin:8px">+ Add Header</button>
+                            </div>
+                            <div class="pane-header" style="border-top: 1px solid var(--border)">Request Body</div>
+                            <textarea id="repeater-body" class="code-editor" placeholder='{"key": "value"}' spellcheck="false"></textarea>
+                        </div>
+                        <div id="rep-req-raw-section" style="display:none; flex:1">
+                            <textarea id="repeater-raw-editor" class="code-editor" style="height:100%" placeholder="Raw HTTP Request..." spellcheck="false"></textarea>
+                        </div>
+                    </div>
+                    <div class="split-handle-v"></div>
+                    <div class="split-right" style="width:50%" id="repeater-response-pane">
+                        <div class="pane-header">
+                            <span>Response Inspector</span>
+                            <div class="response-meta" id="repeater-response-meta" style="display:none">
+                                <span class="badge badge-status" id="repeater-resp-status"></span>
+                                <span class="badge" id="repeater-resp-time"></span>
+                                <span class="badge" id="repeater-resp-size"></span>
+                            </div>
+                        </div>
+                        <div class="pane-tabs" id="rep-resp-tabs">
+                            <button class="pane-tab active" onclick="App.switchRepRespPane('pretty')">Pretty</button>
+                            <button class="pane-tab" onclick="App.switchRepRespPane('raw')">Raw</button>
+                            <button class="pane-tab" onclick="App.switchRepRespPane('headers')">Headers</button>
+                            <button class="pane-tab" onclick="App.switchRepRespPane('hex')">Hex</button>
+                            <button class="pane-tab" onclick="App.switchRepRespPane('render')">Render</button>
+                        </div>
+                        <div class="pane-content">
+                            <div class="pane-panel active" id="pane-rep-pretty">
+                                <pre class="code-view flex-1" id="repeater-response">Click "Send" to dispatch HTTP request</pre>
+                            </div>
+                            <div class="pane-panel" id="pane-rep-raw">
+                                <pre class="code-view flex-1" id="repeater-raw-response"></pre>
+                            </div>
+                            <div class="pane-panel" id="pane-rep-headers">
+                                <table class="header-table"><thead><tr><th>Header Name</th><th>Header Value</th></tr></thead><tbody id="repeater-headers-tbody"></tbody></table>
+                            </div>
+                            <div class="pane-panel" id="pane-rep-hex">
+                                <pre class="hex-view flex-1" id="repeater-hex-response"></pre>
+                            </div>
+                            <div class="pane-panel" id="pane-rep-render">
+                                <iframe id="repeater-render-iframe" class="render-frame-container" sandbox=""></iframe>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== AUTH MATRIX TAB (RBAC CONTRACT VERIFICATION) ========== -->
+            <div class="tab-panel" id="panel-matrix">
+                <div class="proxy-toolbar">
+                    <button class="btn btn-sm btn-primary" onclick="App.runMatrix()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                        Run Matrix Verification
+                    </button>
+                    <button class="btn btn-sm btn-ghost" onclick="App.refreshMatrix()">Refresh</button>
+                    <div class="toolbar-spacer"></div>
+                    <div id="matrix-summary" class="matrix-summary"></div>
+                </div>
+                <div class="matrix-container" id="matrix-grid-container">
+                    <div class="empty-state">
+                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+                        <h3>Declarative RBAC Verification Engine</h3>
+                        <p>Evaluate API endpoints across all configured security roles. Click "Run Matrix Verification" to launch automated penetration testing.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== ROLES TAB ========== -->
+            <div class="tab-panel" id="panel-roles">
+                <div class="proxy-toolbar">
+                    <button class="btn btn-sm btn-primary" onclick="App.showAddRoleModal()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Add Role
+                    </button>
+                    <button class="btn btn-sm btn-ghost" onclick="App.refreshRoles()">Refresh</button>
+                    <div class="toolbar-spacer"></div>
+                    <span class="badge" id="role-count-badge">0 roles</span>
+                </div>
+                <div class="cards-grid" id="roles-grid">
+                    <div class="empty-state">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                        <p>No roles defined. Add a role to establish access control identities.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== POLICIES TAB ========== -->
+            <div class="tab-panel" id="panel-policies">
+                <div class="proxy-toolbar">
+                    <button class="btn btn-sm btn-primary" onclick="App.showAddPolicyModal()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Add Policy
+                    </button>
+                    <button class="btn btn-sm btn-ghost" onclick="App.refreshPolicies()">Refresh</button>
+                    <div class="toolbar-spacer"></div>
+                    <span class="badge" id="policy-count-badge">0 policies</span>
+                </div>
+                <div class="table-container">
+                    <table class="data-table" id="policies-table">
+                        <thead>
+                            <tr>
+                                <th>Policy Name</th>
+                                <th>Method</th>
+                                <th>Path</th>
+                                <th>Expected Status per Role</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="policies-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ========== DECODER TAB (TRANSFORMATION ENGINE) ========== -->
+            <div class="tab-panel" id="panel-decoder">
+                <div class="decoder-layout">
+                    <div class="decoder-card">
+                        <div class="decoder-card-header">
+                            <span>Input String / Token</span>
+                            <span id="decoder-input-len" class="badge">0 chars</span>
+                        </div>
+                        <textarea id="decoder-input" class="decoder-textarea" placeholder="Paste text, URL, Base64 token, Hex bytes, or JWT here…"></textarea>
+                    </div>
+
+                    <div class="decoder-actions-bar">
+                        <span class="decoder-section-label">Transform:</span>
+                        <button class="btn btn-xs btn-primary" onclick="App.runDecoder('url_decode')">URL Decode</button>
+                        <button class="btn btn-xs btn-ghost" onclick="App.runDecoder('url_encode')">URL Encode</button>
+                        <button class="btn btn-xs btn-primary" onclick="App.runDecoder('base64_decode')">Base64 Decode</button>
+                        <button class="btn btn-xs btn-ghost" onclick="App.runDecoder('base64_encode')">Base64 Encode</button>
+                        <button class="btn btn-xs btn-primary" onclick="App.runDecoder('hex_decode')">Hex Decode</button>
+                        <button class="btn btn-xs btn-ghost" onclick="App.runDecoder('hex_encode')">Hex Encode</button>
+                        <button class="btn btn-xs btn-primary" onclick="App.runDecoder('jwt_decode')">JWT Token Inspector</button>
+                        <span class="decoder-section-label" style="margin-left:8px">Hash:</span>
+                        <button class="btn btn-xs btn-ghost" onclick="App.runDecoder('md5')">MD5</button>
+                        <button class="btn btn-xs btn-ghost" onclick="App.runDecoder('sha1')">SHA-1</button>
+                        <button class="btn btn-xs btn-ghost" onclick="App.runDecoder('sha256')">SHA-256</button>
+                    </div>
+
+                    <div class="decoder-card">
+                        <div class="decoder-card-header">
+                            <span>Decoded / Transformed Result</span>
+                            <div>
+                                <button class="btn btn-xs btn-ghost" onclick="App.applyDecoderToInput()">Apply to Input ⮤</button>
+                                <button class="btn btn-xs btn-ghost" onclick="App.copyDecoderOutput()">Copy Result</button>
+                            </div>
+                        </div>
+                        <textarea id="decoder-output" class="decoder-textarea" placeholder="Output will appear here…" readonly></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== COMPARER TAB (VISUAL DIFF ENGINE) ========== -->
+            <div class="tab-panel" id="panel-comparer">
+                <div class="comparer-layout">
+                    <div class="proxy-toolbar">
+                        <button class="btn btn-sm btn-primary" onclick="App.runComparer('words')">Compare Words</button>
+                        <button class="btn btn-sm btn-ghost" onclick="App.runComparer('lines')">Compare Lines</button>
+                        <button class="btn btn-sm btn-ghost" onclick="App.clearComparer()">Clear</button>
+                        <div class="toolbar-spacer"></div>
+                        <span class="badge" id="comparer-stats">Ready to compare</span>
+                    </div>
+                    <div class="comparer-panes">
+                        <div class="comparer-pane">
+                            <div class="pane-header">Item 1 (e.g. Baseline / Admin Response)</div>
+                            <textarea id="comparer-input-1" class="code-editor" style="height:100%" placeholder="Paste first response or request here…"></textarea>
+                        </div>
+                        <div class="comparer-pane">
+                            <div class="pane-header">Item 2 (e.g. Test / Guest Response)</div>
+                            <textarea id="comparer-input-2" class="code-editor" style="height:100%" placeholder="Paste second response or request here…"></textarea>
+                        </div>
+                    </div>
+                    <div class="comparer-diff-container">
+                        <div class="pane-header">Visual Difference Analysis (Green = Added, Red = Removed, Yellow = Modified)</div>
+                        <div id="comparer-diff-output" class="diff-view">Run Compare to generate visual diff.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== SETTINGS TAB ========== -->
+            <div class="tab-panel" id="panel-settings">
+                <div class="settings-container">
+                    <div class="settings-section">
+                        <h3 class="section-title">Proxy Server Configuration</h3>
+                        <div class="setting-row">
+                            <label>Reverse Proxy Listen Port</label>
+                            <input type="number" id="setting-proxy-port" value="8080" class="input-sm" style="width:120px" readonly>
+                        </div>
+                        <div class="setting-row">
+                            <label>Target Upstream Host</label>
+                            <input type="text" id="setting-target-url" value="http://localhost:3000" class="input-sm" style="width:320px">
+                            <button class="btn btn-sm btn-primary" onclick="App.saveTargetSetting()">Save Target</button>
+                        </div>
+                        <div class="setting-row">
+                            <label>Verification Timeout (ms)</label>
+                            <input type="number" id="setting-timeout" value="10000" class="input-sm" style="width:120px">
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <h3 class="section-title">Persistence & SQLite Engine</h3>
+                        <div class="setting-row">
+                            <label>Database Storage</label>
+                            <span class="setting-value">authmatrix.db (SQLite with Write-Ahead Logging WAL mode)</span>
+                        </div>
+                        <div class="setting-row">
+                            <label>Data Management</label>
+                            <button class="btn btn-sm btn-danger" onclick="App.clearAllData()">Purge Entire Database</button>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <h3 class="section-title">Interface Aesthetics</h3>
+                        <div class="setting-row">
+                            <label>Theme Palette</label>
+                            <select id="setting-theme" class="select-sm" onchange="App.setTheme(this.value)">
+                                <option value="dark" selected>AuthMatrix Dark (Default)</option>
+                                <option value="midnight">Midnight Black</option>
+                                <option value="light">Classic Light</option>
+                            </select>
+                        </div>
+                        <div class="setting-row">
+                            <label>Editor Typography Size</label>
+                            <select id="setting-font-size" class="select-sm" onchange="App.setFontSize(this.value)">
+                                <option value="12">12px (Compact)</option>
+                                <option value="13" selected>13px (Default)</option>
+                                <option value="14">14px (Medium)</option>
+                                <option value="15">15px (Large)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Status Bar -->
+        <footer id="status-bar">
+            <div class="status-left">
+                <span id="status-message">AuthMatrix Security Suite Pro — Ready</span>
+            </div>
+            <div class="status-right">
+                <span id="status-memory">Memory: —</span>
+                <span class="status-sep">|</span>
+                <span id="status-uptime">Uptime: 0m 0s</span>
+                <span class="status-sep">|</span>
+                <span>AuthMatrix Pro v0.1.0</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- ========== MATRIX FINDING DETAIL DRAWER (FINDING INSPECTOR) ========== -->
+    <div id="matrix-drawer" class="matrix-drawer">
+        <div class="drawer-header">
+            <div class="drawer-title">
+                <span id="drawer-verdict-icon">⚠</span>
+                <span id="drawer-title-text">Matrix Finding Detail</span>
+            </div>
+            <button class="btn-icon" onclick="App.closeMatrixDrawer()">×</button>
+        </div>
+        <div class="drawer-body">
+            <div id="drawer-alert-banner" class="finding-alert finding-alert-critical">
+                <strong id="drawer-alert-heading">Vulnerability Alert</strong>
+                <p id="drawer-alert-desc">Description of the finding</p>
+            </div>
+            <div class="finding-properties">
+                <div class="finding-property">
+                    <span class="finding-property-label">Endpoint</span>
+                    <span class="finding-property-val" id="drawer-endpoint">GET /api/admin</span>
+                </div>
+                <div class="finding-property">
+                    <span class="finding-property-label">Role Injected</span>
+                    <span class="finding-property-val" id="drawer-role">guest</span>
+                </div>
+                <div class="finding-property">
+                    <span class="finding-property-label">Expected Status</span>
+                    <span class="finding-property-val" id="drawer-expected">401</span>
+                </div>
+                <div class="finding-property">
+                    <span class="finding-property-label">Actual Status</span>
+                    <span class="finding-property-val" id="drawer-actual">200 OK</span>
+                </div>
+                <div class="finding-property">
+                    <span class="finding-property-label">Duration</span>
+                    <span class="finding-property-val" id="drawer-duration">45 ms</span>
+                </div>
+            </div>
+            <div>
+                <label style="font-size:11px;font-weight:600;color:var(--text-secondary);text-transform:uppercase">Role Credentials / Injected Auth Header</label>
+                <pre class="code-view" id="drawer-auth-header" style="max-height:80px;margin-top:6px"></pre>
+            </div>
+            <div style="margin-top:8px">
+                <button class="btn btn-sm btn-primary" onclick="App.sendFindingToRepeater()" style="width:100%">Send this finding to Repeater for Exploitation</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== MODALS ========== -->
+    <div class="modal-overlay" id="modal-overlay" onclick="App.closeModal()"></div>
+
+    <!-- Add Role Modal -->
+    <div class="modal" id="modal-add-role">
+        <div class="modal-header">
+            <h3>Add Security Role</h3>
+            <button class="modal-close" onclick="App.closeModal()">×</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label>Role Identifier</label>
+                <input type="text" id="role-name" placeholder="e.g. admin, member, auditor, guest, anonymous" class="input">
+            </div>
+            <div class="form-group">
+                <label>Auth Header Name</label>
+                <input type="text" id="role-header-name" value="Authorization" placeholder="Authorization or Cookie" class="input">
+            </div>
+            <div class="form-group">
+                <label>Auth Header Value / Token</label>
+                <input type="text" id="role-header-value" placeholder="Bearer eyJhbGci... or session_id=..." class="input">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="App.closeModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="App.addRole()">Save Role</button>
+        </div>
+    </div>
+
+    <!-- Add Policy Modal -->
+    <div class="modal" id="modal-add-policy">
+        <div class="modal-header">
+            <h3>Add Endpoint Contract Policy</h3>
+            <button class="modal-close" onclick="App.closeModal()">×</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-row">
+                <div class="form-group" style="flex:1">
+                    <label>Policy Name</label>
+                    <input type="text" id="policy-name" placeholder="e.g., Get Admin Metrics" class="input">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group" style="width:130px">
+                    <label>HTTP Method</label>
+                    <select id="policy-method" class="input">
+                        <option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option><option>OPTIONS</option><option>HEAD</option>
+                    </select>
+                </div>
+                <div class="form-group" style="flex:1">
+                    <label>Path Pattern</label>
+                    <input type="text" id="policy-path" placeholder="/api/users" class="input">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Expected Status per Role (JSON contract)</label>
+                <textarea id="policy-expect" class="input" rows="4" placeholder='{"admin": 200, "member": 200, "guest": 401}'></textarea>
+            </div>
+            <div class="form-group">
+                <label>Custom Headers (JSON, optional)</label>
+                <textarea id="policy-headers" class="input" rows="2" placeholder='{"Content-Type": "application/json"}'></textarea>
+            </div>
+            <div class="form-group">
+                <label>Request Body Payload (optional)</label>
+                <textarea id="policy-body" class="input" rows="3" placeholder='{"action": "test"}'></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="App.closeModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="App.addPolicy()">Save Policy</button>
+        </div>
+    </div>
+
+    <!-- About Modal -->
+    <div class="modal" id="modal-about">
+        <div class="modal-header">
+            <h3>About AuthMatrix Pro</h3>
+            <button class="modal-close" onclick="App.closeModal()">×</button>
+        </div>
+        <div class="modal-body" style="text-align:center;padding:32px">
+            <svg width="64" height="64" viewBox="0 0 32 32" style="margin-bottom:16px">
+                <rect width="32" height="32" rx="6" fill="#FF6633"/>
+                <text x="16" y="23" text-anchor="middle" fill="white" font-size="18" font-family="monospace" font-weight="bold">A</text>
+            </svg>
+            <h2 style="margin:0 0 8px">AuthMatrix Pro</h2>
+            <p style="color:var(--text-secondary)">Version 0.1.0 Professional</p>
+            <p style="color:var(--text-secondary);margin-top:16px">Local-first HTTP API debugging proxy<br>& declarative RBAC contract verification platform.<br>Engineered with professional security workflows & ergonomics.</p>
+            <p style="color:var(--text-tertiary);margin-top:24px;font-size:12px">Pure Java Backend · SQLite WAL · Zero Cloud Dependencies</p>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-primary" onclick="App.closeModal()">Close</button>
+        </div>
+    </div>
+
+    <!-- Toast container -->
+    <div id="toast-container"></div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

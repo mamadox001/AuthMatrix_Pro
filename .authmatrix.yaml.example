@@ -1,0 +1,55 @@
+version: '1.0'
+target_base_url: 'http://localhost:3000'
+
+roles:
+  admin:
+    header_name: 'Authorization'
+    header_value: 'Bearer ${ADMIN_TOKEN:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.admin}'
+  member_a:
+    header_name: 'Authorization'
+    header_value: 'Bearer ${MEMBER_TOKEN:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.member_a}'
+  guest:
+    header_name: 'Authorization'
+    header_value: ''
+
+endpoints:
+  - name: 'Public Health Check'
+    method: GET
+    path: '/api/v1/public/health'
+    headers:
+      Content-Type: 'application/json'
+    expect:
+      admin: 200
+      member_a: 200
+      guest: 200
+
+  - name: 'Current User Profile'
+    method: GET
+    path: '/api/v1/users/me'
+    headers:
+      Content-Type: 'application/json'
+    expect:
+      admin: 200
+      member_a: 200
+      guest: 401
+
+  - name: 'Organization Billing Settings'
+    method: GET
+    path: '/api/v1/orgs/101/billing'
+    headers:
+      Content-Type: 'application/json'
+    expect:
+      admin: 200
+      member_a: 403
+      guest: 401
+
+  - name: 'Admin Audit Log Ingestion'
+    method: POST
+    path: '/api/v1/admin/audit-logs'
+    headers:
+      Content-Type: 'application/json'
+    body: '{"event": "manual_audit_check", "severity": "info"}'
+    expect:
+      admin: 201
+      member_a: 403
+      guest: 401

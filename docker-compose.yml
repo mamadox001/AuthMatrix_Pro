@@ -1,0 +1,24 @@
+services:
+  authmatrix:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: authmatrix
+    restart: unless-stopped
+    ports:
+      - "4000:4000"   # REST & WebSocket API
+      - "8080:8080"   # Reverse Proxy Engine
+      - "5173:5173"   # Web UI
+    environment:
+      - API_PORT=4000
+      - PROXY_PORT=8080
+      - TARGET_HOST=http://host.docker.internal:3000
+      - DB_PATH=/app/data/authmatrix.db
+    volumes:
+      - authmatrix-data:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  authmatrix-data:
+    driver: local
