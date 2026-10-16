@@ -6,9 +6,8 @@ services:
     container_name: authmatrix
     restart: unless-stopped
     ports:
-      - "4000:4000"   # REST & WebSocket API
+      - "4000:4000"   # Web UI, REST & WebSocket API
       - "8080:8080"   # Reverse Proxy Engine
-      - "5173:5173"   # Web UI
     environment:
       - API_PORT=4000
       - PROXY_PORT=8080
