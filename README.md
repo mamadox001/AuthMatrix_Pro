@@ -18,7 +18,7 @@ AuthMatrix provides penetration testers, security engineers, and backend archite
    - **Decoder:** Security transformation tool supporting URL Encode/Decode, Base64 Encode/Decode, Hex Encode/Decode, HTML Entities, cryptographic hashes (MD5, SHA-1, SHA-256), and JWT Token Claim Inspector.
    - **Comparer:** Visual word-by-word and line-by-line diff engine to compare baseline responses vs test responses side-by-side.
    - **Roles & Policies:** Identity credential vault and declarative contract rules.
-3. **Local-First & Zero Cloud Dependencies:** Stores all traffic logs, roles, policies, and test results locally in SQLite (`authmatrix.db`) using **WAL (Write-Ahead Logging)** mode.
+3. **Local-First & Zero-Config Database:** Embedded SQLite (`authmatrix.db`) operating in **WAL (Write-Ahead Logging)** mode. Zero external database setup, migrations, or cloud dependencies—the database auto-creates, migrates schemas, and seeds default roles on first launch.
 4. **Headless CI/CD CLI:** Standalone CLI (`authmatrix-cli.jar`) executing contract verification in GitHub Actions or GitLab CI pipelines with exit code enforcement.
 
 ---
@@ -84,6 +84,18 @@ TARGET_HOST=http://localhost:5000 API_PORT=4000 PROXY_PORT=8080 DB_PATH=authmatr
 ```
 
 Open `http://localhost:4000` in your browser to launch the AuthMatrix Web UI.
+
+### 💾 Zero-Config Embedded Database (No Setup Required)
+
+AuthMatrix requires **no database installation, setup, or external services**:
+- **Automatic Initialization:** An embedded SQLite database (`authmatrix.db`) is automatically created in the working directory on first launch.
+- **Auto Schema & Seeding:** All required tables (`traffic_logs`, `auth_roles`, `endpoint_policies`, `matrix_results`) and default starter security roles (`admin`, `member_a`, `guest`) are initialized automatically.
+- **WAL Mode (Write-Ahead Logging):** Configured for high-throughput concurrent reads and writes with zero lock contention.
+- **100% Local & Private:** All intercepted request bodies, headers, and exploit reproduction details stay strictly on your local machine.
+- *(Optional)* To customize the database file location, pass the `DB_PATH` environment variable:
+  ```bash
+  DB_PATH=/custom/path/my_authmatrix.db java -jar server/target/authmatrix-server-0.1.0-SNAPSHOT.jar
+  ```
 
 ---
 
